@@ -221,6 +221,8 @@ function createTransfer(
     const transfer = {
 
         id: makeId(10),
+        localId: data.localId || null,
+
 
         senderId,
 
