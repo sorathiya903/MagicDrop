@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>MagicDrop</title>
+
+    <link
+        rel="stylesheet"
+        href="style.css"
+    >
+
+</head>
+
+<body>
+
+    <main>
+
+        <div class="logo">
+            ✨ MagicDrop
+        </div>
+
+        <p class="subtitle">
+            Share instantly on your local network.
+        </p>
+
+
+        <section id="joinScreen">
+
+            <h2>Join MagicDrop</h2>
+
+            <input
+                id="deviceName"
+                placeholder="Device name"
+                maxlength="30"
+            >
+
+            <button id="joinBtn">
+                Join
+            </button>
+
+        </section>
+
+
+        <section
+            id="appScreen"
+            hidden
+        >
+
+            <p>
+                Connected as
+                <strong id="myName"></strong>
+            </p>
+
+
+            <h2>Send to</h2>
+
+            <div id="devices"></div>
+
+
+            <textarea
+                id="text"
+                placeholder="Write something to send..."
+            ></textarea>
+
+            <button id="sendText">
+                Send Text
+            </button>
+
+
+            <input
+                type="file"
+                id="fileInput"
+                multiple
+            >
+
+            <button id="sendFile">
+                Send File
+            </button>
+
+
+            <h2>Transfers</h2>
+
+            <div id="transfers"></div>
+
+        </section>
+
+    </main>
+
+
+    <script src="app.js"></script>
+
+</body>
+
+</html>
