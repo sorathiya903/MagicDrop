@@ -1304,6 +1304,7 @@ Commands:
                 }
 
             }
+                
 
 
             else if (
@@ -1329,6 +1330,30 @@ exit
                 process.exit(0);
 
             }
+                else if (
+    input.startsWith("accept ")
+) {
+
+    const transferId =
+        input.substring(7).trim();
+
+    acceptTerminalTransfer(
+        transferId
+    );
+
+                }
+                    else if (
+    input.startsWith("reject ")
+) {
+
+    const transferId =
+        input.substring(7).trim();
+
+    rejectTerminalTransfer(
+        transferId
+    );
+
+                    }
 
 
             else if (
