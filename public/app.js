@@ -3,7 +3,7 @@ const socket =
         `ws://${location.host}`
     );
 
-
+let activeIncomingFile = null;
 let myId = null;
 let myName = null;
 let incomingBuffers = [];
@@ -47,8 +47,298 @@ document
         "click",
         join
     );
+function getFileIcon(name, mime) {
+
+    const ext =
+        name
+            .split(".")
+            .pop()
+            .toLowerCase();
 
 
+    if (mime === "application/pdf")
+        return "📕";
+
+    if (mime && mime.startsWith("video/"))
+        return "🎬";
+
+    if (mime && mime.startsWith("audio/"))
+        return "🎵";
+
+    if (
+        [
+            "zip",
+            "rar",
+            "7z",
+            "tar",
+            "gz"
+        ].includes(ext)
+    )
+        return "📦";
+
+    if (
+        [
+            "doc",
+            "docx"
+        ].includes(ext)
+    )
+        return "📘";
+
+    if (
+        [
+            "xls",
+            "xlsx",
+            "csv"
+        ].includes(ext)
+    )
+        return "📊";
+
+    if (
+        [
+            "ppt",
+            "pptx"
+        ].includes(ext)
+    )
+        return "📙";
+
+    if (
+        [
+            "txt",
+            "md"
+        ].includes(ext)
+    )
+        return "📄";
+
+    if (
+        [
+            "js",
+            "html",
+            "css",
+            "py",
+            "json"
+        ].includes(ext)
+    )
+        return "💻";
+
+
+    return "📎";
+
+}
+function finishIncomingFile(data) {
+
+    if (!activeIncomingFile)
+        return;
+
+
+    const file =
+        activeIncomingFile;
+
+
+    const blob =
+        new Blob(
+            file.chunks,
+            {
+                type:
+                    file.mime ||
+                    "application/octet-stream"
+            }
+        );
+
+
+    const url =
+        URL.createObjectURL(blob);
+
+
+    // =========================
+    // TRANSFER CARD
+    // =========================
+
+    const item =
+        document.createElement("div");
+
+    item.className =
+        "transfer";
+
+
+    // Image thumbnail
+    if (
+        file.mime &&
+        file.mime.startsWith("image/")
+    ) {
+
+        item.innerHTML = `
+
+            <div class="received-file">
+
+                <img
+                    src="${url}"
+                    class="received-thumbnail"
+                    alt="${escapeHTML(file.name)}"
+                >
+
+                <div>
+
+                    <strong>
+                        ${escapeHTML(file.name)}
+                    </strong>
+
+                    <small>
+                        ${formatBytes(file.size)}
+                    </small>
+
+                    <a
+                        href="${url}"
+                        download="${escapeHTML(file.name)}"
+                        class="download-btn"
+                    >
+                        ⬇️ Download
+                    </a>
+
+                </div>
+
+            </div>
+
+        `;
+
+    }
+
+    // Other files
+    else {
+
+        const icon =
+            getFileIcon(
+                file.name,
+                file.mime
+            );
+
+
+        item.innerHTML = `
+
+            <div class="received-file">
+
+                <div class="file-icon">
+                    ${icon}
+                </div>
+
+                <div>
+
+                    <strong>
+                        ${escapeHTML(file.name)}
+                    </strong>
+
+                    <small>
+                        ${formatBytes(file.size)}
+                    </small>
+
+                    <a
+                        href="${url}"
+                        download="${escapeHTML(file.name)}"
+                        class="download-btn"
+                    >
+                        ⬇️ Download
+                    </a>
+
+                </div>
+
+            </div>
+
+        `;
+
+    }
+
+
+    transfers.prepend(item);
+
+
+    console.log(
+        `✅ Received ${file.name}`
+    );
+
+
+    // Release old chunks
+    activeIncomingFile =
+        null;
+
+}
+async function handleIncomingBinary(data) {
+
+    if (!activeIncomingFile) {
+        console.warn(
+            "Received file data but no active transfer."
+        );
+        return;
+    }
+
+
+    // Convert incoming WebSocket data to Blob
+    let chunk;
+
+    if (data instanceof Blob) {
+
+        chunk = data;
+
+    } else if (data instanceof ArrayBuffer) {
+
+        chunk = new Blob([data]);
+
+    } else {
+
+        console.warn(
+            "Unknown binary data received."
+        );
+
+        return;
+    }
+
+
+    // Store chunk
+    activeIncomingFile.chunks.push(chunk);
+
+    activeIncomingFile.received +=
+        chunk.size;
+
+
+    // Update progress if available
+    const progress =
+        document.getElementById(
+            "transferProgress"
+        );
+
+    if (progress) {
+
+        const percent =
+            activeIncomingFile.size
+                ? Math.min(
+                    100,
+                    (
+                        activeIncomingFile.received /
+                        activeIncomingFile.size
+                    ) * 100
+                )
+                : 0;
+
+        progress.textContent =
+            `${Math.round(percent)}%`;
+
+    }
+
+
+    // Optional log
+    console.log(
+        `📥 Receiving ${
+            activeIncomingFile.name
+        }: ${
+            formatBytes(
+                activeIncomingFile.received
+            )
+        } / ${
+            formatBytes(
+                activeIncomingFile.size
+            )
+        }`
+    );
+
+}
 function join() {
 
     const name =
