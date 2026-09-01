@@ -27,6 +27,134 @@ if (!fs.existsSync(DOWNLOAD_DIR)) {
 // ==============================
 // LOCAL IP
 // ==============================
+function sendTerminalFileToReceiver(
+    transfer,
+    receiverId
+) {
+
+    if (!transfer.filePath)
+        return;
+
+
+    const receiver =
+        devices.get(
+            receiverId
+        );
+
+    if (!receiver)
+        return;
+
+
+    console.log(
+        `📤 Sending ${transfer.name} → ${receiver.name}`
+    );
+
+
+    sendJSON(
+        receiver.ws,
+        {
+
+            type:
+                "file-start",
+
+            transferId:
+                transfer.id,
+
+            name:
+                transfer.name,
+
+            size:
+                transfer.size,
+
+            mime:
+                transfer.mime,
+
+            senderName:
+                "MagicDrop Host"
+
+        }
+    );
+
+
+    const stream =
+        fs.createReadStream(
+            transfer.filePath,
+            {
+                highWaterMark:
+                    64 * 1024
+            }
+        );
+
+
+    stream.on(
+        "data",
+        chunk => {
+
+            if (
+                receiver.ws.readyState ===
+                WebSocket.OPEN
+            ) {
+
+                receiver.ws.send(
+                    chunk
+                );
+
+            }
+
+        }
+    );
+
+
+    stream.on(
+        "end",
+        () => {
+
+            sendJSON(
+                receiver.ws,
+                {
+
+                    type:
+                        "file-complete",
+
+                    transferId:
+                        transfer.id,
+
+                    name:
+                        transfer.name,
+
+                    size:
+                        transfer.size,
+
+                    mime:
+                        transfer.mime,
+
+                    senderName:
+                        "MagicDrop Host"
+
+                }
+            );
+
+
+            console.log(
+                `✅ Sent ${transfer.name} → ${receiver.name}`
+            );
+
+        }
+    );
+
+
+    stream.on(
+        "error",
+        error => {
+
+            console.log(
+                `❌ File error: ${error.message}`
+            );
+
+        }
+    );
+
+}
 function handleBinary(
     ws,
     buffer
