@@ -608,25 +608,19 @@ async function uploadFile(
 
 function sendFiles() {
 
-    const files =
-        [...fileInput.files];
-
+    const files = [...fileInput.files];
 
     if (!files.length) {
         alert("Select a file first.");
         return;
     }
 
-
-    const targets =
-        getTargets();
-
+    const targets = getTargets();
 
     if (!targets.length) {
         alert("Select a device first.");
         return;
     }
-
 
     files.forEach(file => {
 
@@ -635,49 +629,35 @@ function sendFiles() {
                 .toString(36)
                 .substring(2, 10);
 
-
         pendingFiles.set(
             localId,
             file
         );
 
+        socket.send(JSON.stringify({
 
-        socket.send(
-            JSON.stringify({
+            type: "transfer-request",
 
-                type:
-                    "transfer-request",
+            localId,
 
-                localId,
+            targets,
 
-                targets,
+            kind: file.type.startsWith("image/")
+                ? "image"
+                : "file",
 
-                kind:
-                    file.type.startsWith(
-                        "image/"
-                    )
-                        ? "image"
-                        : "file",
+            name: file.name,
 
-                name:
-                    file.name,
+            size: file.size,
 
-                size:
-                    file.size,
+            mime: file.type
 
-                mime:
-                    file.type
-
-            })
-        );
+        }));
 
     });
 
-
     fileInput.value = "";
-
-                  }
-    
+}
 socket.addEventListener(
     "message",
     event => {
