@@ -21,81 +21,128 @@
 
 <body>
 
-    <main>
+<main>
 
-        <div class="logo">
-            ✨ MagicDrop
-        </div>
+    <div class="logo">
+        ✨ MagicDrop
+    </div>
 
-        <p class="subtitle">
-            Share instantly on your local network.
+    <p class="subtitle">
+        Share instantly on your local network.
+    </p>
+
+
+    <!-- JOIN -->
+
+    <section id="joinScreen">
+
+        <h2>Join MagicDrop</h2>
+
+        <input
+            id="deviceName"
+            placeholder="Device name"
+            maxlength="30"
+        >
+
+        <button id="joinBtn">
+            Join
+        </button>
+
+    </section>
+
+
+    <!-- APP -->
+
+    <section id="appScreen" hidden>
+
+        <p>
+            Connected as
+            <strong id="myName"></strong>
         </p>
 
 
-        <section id="joinScreen">
+        <h2>Send to</h2>
 
-            <h2>Join MagicDrop</h2>
-
-            <input
-                id="deviceName"
-                placeholder="Device name"
-                maxlength="30"
-            >
-
-            <button id="joinBtn">
-                Join
-            </button>
-
-        </section>
+        <div id="devices"></div>
 
 
-        <section
-            id="appScreen"
-            hidden
+        <h2>Text</h2>
+
+        <textarea
+            id="text"
+            placeholder="Write something to send..."
+        ></textarea>
+
+        <button id="sendText">
+            💬 Send Text
+        </button>
+
+
+        <h2>Files</h2>
+
+        <input
+            type="file"
+            id="fileInput"
+            multiple
         >
 
-            <p>
-                Connected as
-                <strong id="myName"></strong>
-            </p>
+        <button id="sendFile">
+            📤 Send Files
+        </button>
 
 
-            <h2>Send to</h2>
+        <h2>Transfers</h2>
 
-            <div id="devices"></div>
+        <div id="transfers"></div>
 
+    </section>
 
-            <textarea
-                id="text"
-                placeholder="Write something to send..."
-            ></textarea>
-
-            <button id="sendText">
-                Send Text
-            </button>
+</main>
 
 
-            <input
-                type="file"
-                id="fileInput"
-                multiple
+<!-- INCOMING MODAL -->
+
+<div
+    id="incomingModal"
+    class="modal"
+    hidden
+>
+
+    <div class="modal-box">
+
+        <h2>📥 Incoming</h2>
+
+        <p>
+            From:
+            <strong id="incomingSender"></strong>
+        </p>
+
+        <div id="incomingPreview"></div>
+
+        <div class="modal-buttons">
+
+            <button
+                id="rejectBtn"
+                class="reject"
             >
-
-            <button id="sendFile">
-                Send File
+                Reject
             </button>
 
+            <button
+                id="acceptBtn"
+                class="accept"
+            >
+                Accept
+            </button>
 
-            <h2>Transfers</h2>
+        </div>
 
-            <div id="transfers"></div>
+    </div>
 
-        </section>
-
-    </main>
+</div>
 
 
-    <script src="app.js"></script>
+<script src="app.js"></script>
 
 </body>
 
