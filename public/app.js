@@ -821,11 +821,13 @@ if (data.type === "transfer-request") {
 
         }
 
-        if (data.type === "file-complete") {
+        if (
+    data.type === "file-complete"
+) {
 
     finishIncomingFile(data);
 
-        }
+}
         // =========================
 // ACCEPT TRANSFER
 // =========================
