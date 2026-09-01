@@ -760,6 +760,9 @@ function acceptTransfer(
 
                     transferId:
                         transfer.id,
+                    
+    localId: transfer.localId,
+
 
                     senderName:
                         transfer.senderName,
@@ -800,6 +803,7 @@ function acceptTransfer(
 
                 transferId:
                     transfer.id,
+                
 
                 receiverId:
                     receiver.id,
