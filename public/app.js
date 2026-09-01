@@ -1462,7 +1462,6 @@ function showIncoming(data) {
 // =========================
 // ACCEPT
 // =========================
-
 document
     .getElementById("acceptBtn")
     .addEventListener(
@@ -1473,6 +1472,35 @@ document
                 return;
 
 
+            // Start collecting binary data
+            if (
+                currentIncoming.kind === "image" ||
+                currentIncoming.kind === "file"
+            ) {
+
+                activeIncomingFile = {
+
+                    transferId:
+                        currentIncoming.transferId,
+
+                    name:
+                        currentIncoming.name,
+
+                    size:
+                        currentIncoming.size,
+
+                    mime:
+                        currentIncoming.mime,
+
+                    chunks: [],
+
+                    received: 0
+
+                };
+
+            }
+
+
             socket.send(
                 JSON.stringify({
 
@@ -1480,8 +1508,7 @@ document
                         "accept-transfer",
 
                     transferId:
-                        currentIncoming
-                            .transferId
+                        currentIncoming.transferId
 
                 })
             );
@@ -1496,7 +1523,6 @@ document
 
         }
     );
-
 
 // =========================
 // REJECT
