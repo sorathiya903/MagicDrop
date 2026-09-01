@@ -13,7 +13,7 @@ const PORT = 8765;
 
 const devices = new Map();
 const transfers = new Map();
-
+let pendingTerminalTransfers = new Map();
 const DOWNLOAD_DIR =
     path.join(process.cwd(), "downloads");
 
@@ -22,8 +22,6 @@ if (!fs.existsSync(DOWNLOAD_DIR)) {
         recursive: true
     });
 }
-
-
 // ==============================
 // LOCAL IP
 // ==============================
@@ -49,7 +47,33 @@ function formatSize(bytes) {
         bytes / Math.pow(1024, index);
 
     return `${value.toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
+        }
+function askTerminalApproval(transfer) {
+
+    console.log("");
+    console.log("📥 Incoming Transfer");
+    console.log("");
+    console.log(`From: ${transfer.senderName}`);
+    console.log(`Type: ${transfer.kind}`);
+
+    if (transfer.kind === "text") {
+        console.log(`Text: ${transfer.text}`);
+    } else {
+        console.log(`File: ${transfer.name}`);
+        console.log(`Size: ${formatSize(transfer.size)}`);
+    }
+
+    console.log("");
+    console.log(`Transfer ID: ${transfer.id}`);
+    console.log("Accept? (y/n)");
+    console.log("");
+
+    pendingTerminalTransfers.set(
+        transfer.id,
+        transfer
+    );
 }
+
 function sendTerminalFileToReceiver(
     transfer,
     receiverId
