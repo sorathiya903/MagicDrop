@@ -30,6 +30,31 @@ if (!fs.existsSync(DOWNLOAD_DIR)) {
 // ======================================================
 // HELPERS
 // ======================================================
+const PACKAGE_FILE =
+    path.join(__dirname, "package.json");
+
+function getVersion() {
+
+    try {
+
+        const packageData =
+            JSON.parse(
+                fs.readFileSync(
+                    PACKAGE_FILE,
+                    "utf8"
+                )
+            );
+
+        return packageData.version || "unknown";
+
+    } catch (error) {
+
+        return "unknown";
+
+    }
+
+}
+
 
 function makeId(length = 10) {
 
@@ -2596,7 +2621,20 @@ if (
 
     startServer();
 
-} else {
+}
+
+else if (
+    command === "-v" ||
+    command === "--version"
+) {
+
+    console.log(
+        `MagicDrop ${getVersion()} by Aditya Sorathiya`
+    );
+
+}
+
+else {
 
     console.log(`
 ✨ MagicDrop
@@ -2604,6 +2642,7 @@ if (
 Usage:
 
   md start
+  md -v
 `);
 
-    }
+}
