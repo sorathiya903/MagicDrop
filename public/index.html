@@ -32,38 +32,53 @@
     </p>
 
 
-    <!-- JOIN -->
+    <!-- =========================
+         JOIN SCREEN
+    ========================== -->
 
     <section id="joinScreen">
 
         <h2>Join MagicDrop</h2>
 
+        <p class="hint">
+            Choose a name for this device.
+        </p>
+
         <input
+            type="text"
             id="deviceName"
-            placeholder="Device name"
+            placeholder="e.g. Aditya's Laptop"
             maxlength="30"
+            autocomplete="off"
         >
 
-        <button id="joinBtn">
-            Join
+        <button
+            id="joinBtn"
+            type="button"
+        >
+            🚀 Join MagicDrop
         </button>
 
     </section>
 
 
-    <!-- APP -->
+    <!-- =========================
+         APP SCREEN
+    ========================== -->
 
     <section id="appScreen" hidden>
 
-        <p>
+        <div class="connected">
             Connected as
             <strong id="myName"></strong>
-        </p>
+        </div>
 
 
         <h2>Send to</h2>
 
-        <div id="devices"></div>
+        <div id="devices">
+            <p>No other devices connected.</p>
+        </div>
 
 
         <h2>Text</h2>
@@ -73,7 +88,10 @@
             placeholder="Write something to send..."
         ></textarea>
 
-        <button id="sendText">
+        <button
+            id="sendText"
+            type="button"
+        >
             💬 Send Text
         </button>
 
@@ -86,7 +104,10 @@
             multiple
         >
 
-        <button id="sendFile">
+        <button
+            id="sendFile"
+            type="button"
+        >
             📤 Send Files
         </button>
 
@@ -100,7 +121,9 @@
 </main>
 
 
-<!-- INCOMING MODAL -->
+<!-- =========================
+     INCOMING TRANSFER
+========================== -->
 
 <div
     id="incomingModal"
@@ -110,7 +133,7 @@
 
     <div class="modal-box">
 
-        <h2>📥 Incoming</h2>
+        <h2>📥 Incoming Transfer</h2>
 
         <p>
             From:
@@ -124,15 +147,17 @@
             <button
                 id="rejectBtn"
                 class="reject"
+                type="button"
             >
-                Reject
+                ❌ Reject
             </button>
 
             <button
                 id="acceptBtn"
                 class="accept"
+                type="button"
             >
-                Accept
+                ✅ Accept
             </button>
 
         </div>
