@@ -1,0 +1,72 @@
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: system-ui, sans-serif;
+    background: #0f172a;
+    color: #e5e7eb;
+}
+
+main {
+    width: min(700px, 92%);
+    margin: 70px auto;
+}
+
+.logo {
+    font-size: 34px;
+    font-weight: 800;
+}
+
+.subtitle {
+    color: #94a3b8;
+}
+
+section {
+    margin-top: 35px;
+    padding: 25px;
+    background: #1e293b;
+    border-radius: 18px;
+}
+
+input,
+textarea {
+    width: 100%;
+    margin-top: 12px;
+    padding: 13px;
+    border-radius: 10px;
+    border: 1px solid #475569;
+    background: #0f172a;
+    color: white;
+}
+
+textarea {
+    min-height: 120px;
+    resize: vertical;
+}
+
+button {
+    margin-top: 12px;
+    padding: 11px 16px;
+    border: 0;
+    border-radius: 10px;
+    cursor: pointer;
+    background: #7c3aed;
+    color: white;
+    font-weight: 700;
+}
+
+#devices {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+#devices button {
+    margin: 0;
+}
+
+#devices button.selected {
+    outline: 2px solid white;
+}
