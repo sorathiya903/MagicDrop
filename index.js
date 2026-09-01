@@ -838,7 +838,45 @@ function finishUpload(
     if (!transfer)
         return;
 
+if (
+    transfer.accepted.has("terminal") &&
+    transfer.receivedChunks.length
+) {
 
+    const safeName =
+        path.basename(
+            transfer.name || "received-file"
+        );
+
+    const outputPath =
+        path.join(
+            DOWNLOAD_DIR,
+            safeName
+        );
+
+
+    const fileBuffer =
+        Buffer.concat(
+            transfer.receivedChunks
+        );
+
+
+    fs.writeFileSync(
+        outputPath,
+        fileBuffer
+    );
+
+
+    console.log("");
+    console.log(
+        `📥 File received: ${safeName}`
+    );
+
+    console.log(
+        `📁 Saved to: ${outputPath}`
+    );
+
+}
     for (
         const receiverId
         of transfer.accepted
