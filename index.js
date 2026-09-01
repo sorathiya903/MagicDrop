@@ -1089,88 +1089,57 @@ function sendTerminalFileToReceiver(
 
 }
 
-
 // ======================================================
 // BROWSER → BROWSER / HOST BINARY
 // ======================================================
 
-function handleBinary(
-    ws,
-    buffer
-) {
+function handleBinary(ws, buffer) {
 
-    const transferId =
-        ws.activeUpload;
+    const transferId = ws.activeUpload;
 
-
-    if (!transferId)
+    if (!transferId) {
+        console.log("⚠️ Binary received but no active upload.");
         return;
+    }
 
+    const transfer = transfers.get(transferId);
 
-    const transfer =
-        transfers.get(
-            transferId
-        );
-
-
-    if (!transfer)
+    if (!transfer) {
+        console.log("⚠️ Transfer not found:", transferId);
         return;
+    }
 
+    // Make sure this socket is actually the sender
+    if (transfer.senderId !== ws.deviceId) {
+        console.log("⚠️ Unauthorized upload.");
+        return;
+    }
 
-    const chunk =
-        Buffer.from(buffer);
+    const chunk = Buffer.from(buffer);
 
+    // Store chunks only because the host may need them.
+    if (transfer.accepted.has("terminal")) {
+        transfer.receivedChunks.push(chunk);
+        transfer.receivedBytes += chunk.length;
+    }
 
-    transfer.receivedChunks.push(
-        chunk
-    );
+    // Forward ONLY to approved browser receivers.
+    for (const receiverId of transfer.accepted) {
 
-
-    transfer.receivedBytes +=
-        chunk.length;
-
-
-    // --------------------------------------------------
-    // FORWARD TO APPROVED BROWSER CLIENTS
-    // --------------------------------------------------
-
-    for (
-        const receiverId
-        of transfer.accepted
-    ) {
-
-        if (
-            receiverId === "terminal"
-        ) {
-
+        if (receiverId === "terminal")
             continue;
 
-        }
-
-
-        const receiver =
-            devices.get(
-                receiverId
-            );
-
+        const receiver = devices.get(receiverId);
 
         if (!receiver)
             continue;
 
-
         if (
-            receiver.ws.readyState ===
-            WebSocket.OPEN
+            receiver.ws.readyState === WebSocket.OPEN
         ) {
-
-            receiver.ws.send(
-                chunk
-            );
-
+            receiver.ws.send(chunk);
         }
-
     }
-
 }
 
 
@@ -1178,30 +1147,35 @@ function handleBinary(
 // FINISH BROWSER UPLOAD
 // ======================================================
 
-function finishUpload(
-    ws,
-    data
-) {
+function finishUpload(ws, data) {
 
     const transfer =
-        transfers.get(
-            data.transferId
-        );
-
+        transfers.get(data.transferId);
 
     if (!transfer)
         return;
 
 
-    // --------------------------------------------------
-    // SAVE TO HOST
-    // --------------------------------------------------
+    // Only the original sender can finish
+    // the upload.
+    if (
+        transfer.senderId !== ws.deviceId
+    ) {
+        console.log(
+            "⚠️ Unauthorized upload finish."
+        );
+
+        return;
+    }
+
+
+    // ==================================================
+    // SAVE TO HOST DOWNLOADS
+    // ==================================================
 
     if (
-        transfer.accepted.has(
-            "terminal"
-        ) &&
-        transfer.receivedChunks.length
+        transfer.accepted.has("terminal") &&
+        transfer.receivedChunks.length > 0
     ) {
 
         const safeName =
@@ -1218,13 +1192,15 @@ function finishUpload(
             );
 
 
-        // Prevent overwriting
-        // existing files.
-
-        if (fs.existsSync(outputPath)) {
+        // Avoid overwriting existing files
+        if (
+            fs.existsSync(outputPath)
+        ) {
 
             const ext =
-                path.extname(safeName);
+                path.extname(
+                    safeName
+                );
 
             const base =
                 path.basename(
@@ -1256,9 +1232,11 @@ function finishUpload(
 
         console.log("");
         console.log(
-            `📥 File received: ${path.basename(
-                outputPath
-            )}`
+            `📥 File received: ${path.basename(outputPath)}`
+        );
+
+        console.log(
+            `📦 Size: ${formatSize(fileBuffer.length)}`
         );
 
         console.log(
@@ -1270,9 +1248,9 @@ function finishUpload(
     }
 
 
-    // --------------------------------------------------
-    // TELL BROWSER RECEIVERS
-    // --------------------------------------------------
+    // ==================================================
+    // TELL APPROVED BROWSER RECEIVERS
+    // ==================================================
 
     for (
         const receiverId
@@ -1281,11 +1259,8 @@ function finishUpload(
 
         if (
             receiverId === "terminal"
-        ) {
-
+        )
             continue;
-
-        }
 
 
         const receiver =
@@ -1326,6 +1301,7 @@ function finishUpload(
     }
 
 
+    // Tell sender upload is finished
     sendJSON(
         ws,
         {
@@ -1340,19 +1316,13 @@ function finishUpload(
     );
 
 
-    transfer.receivedChunks =
-        [];
+    // Cleanup
+    transfer.receivedChunks = [];
+    transfer.receivedBytes = 0;
 
-    transfer.receivedBytes =
-        0;
-
-
-    ws.activeUpload =
-        null;
+    ws.activeUpload = null;
 
 }
-
-
 // ======================================================
 // UPLOAD START
 // ======================================================
