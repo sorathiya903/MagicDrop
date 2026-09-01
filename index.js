@@ -13,18 +13,33 @@ const PORT = 8765;
 
 const devices = new Map();
 const transfers = new Map();
-let pendingTerminalTransfers = new Map();
-const DOWNLOAD_DIR =
-    path.join(process.cwd(), "downloads");
+const pendingTerminalTransfers = new Map();
+
+const DOWNLOAD_DIR = path.join(
+    process.cwd(),
+    "downloads"
+);
 
 if (!fs.existsSync(DOWNLOAD_DIR)) {
     fs.mkdirSync(DOWNLOAD_DIR, {
         recursive: true
     });
 }
-// ==============================
-// LOCAL IP
-// ==============================
+
+
+// ======================================================
+// HELPERS
+// ======================================================
+
+function makeId(length = 10) {
+
+    return Math.random()
+        .toString(36)
+        .substring(2, 2 + length);
+
+}
+
+
 function formatSize(bytes) {
 
     if (!bytes || bytes <= 0)
@@ -38,41 +53,906 @@ function formatSize(bytes) {
         "TB"
     ];
 
-    const index =
+    const index = Math.min(
         Math.floor(
             Math.log(bytes) / Math.log(1024)
-        );
+        ),
+        units.length - 1
+    );
 
     const value =
-        bytes / Math.pow(1024, index);
+        bytes /
+        Math.pow(1024, index);
 
-    return `${value.toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
-        }
-function askTerminalApproval(transfer) {
+    return (
+        value.toFixed(
+            index === 0 ? 0 : 1
+        ) +
+        " " +
+        units[index]
+    );
 
-    console.log("");
-    console.log("📥 Incoming Transfer");
-    console.log("");
-    console.log(`From: ${transfer.senderName}`);
-    console.log(`Type: ${transfer.kind}`);
+}
 
-    if (transfer.kind === "text") {
-        console.log(`Text: ${transfer.text}`);
-    } else {
-        console.log(`File: ${transfer.name}`);
-        console.log(`Size: ${formatSize(transfer.size)}`);
+
+function sendJSON(ws, data) {
+
+    if (
+        ws &&
+        ws.readyState === WebSocket.OPEN
+    ) {
+
+        ws.send(
+            JSON.stringify(data)
+        );
+
     }
 
+}
+
+
+function getDevice(id) {
+
+    return devices.get(id);
+
+}
+
+
+function getLocalIP() {
+
+    const interfaces =
+        os.networkInterfaces();
+
+    for (
+        const name of Object.keys(interfaces)
+    ) {
+
+        for (
+            const iface of interfaces[name]
+        ) {
+
+            if (
+                iface.family === "IPv4" &&
+                !iface.internal
+            ) {
+
+                return iface.address;
+
+            }
+
+        }
+
+    }
+
+    return "localhost";
+
+}
+
+
+// ======================================================
+// DEVICES
+// ======================================================
+
+function broadcastDevices() {
+
+    const list = [
+
+        {
+            id: "terminal",
+            name: "💻 MagicDrop Host"
+        },
+
+        ...[
+            ...devices.values()
+        ].map(device => ({
+            id: device.id,
+            name: device.name
+        }))
+
+    ];
+
+
+    const message = {
+
+        type: "devices",
+
+        devices: list
+
+    };
+
+
+    for (
+        const device of devices.values()
+    ) {
+
+        sendJSON(
+            device.ws,
+            message
+        );
+
+    }
+
+}
+
+
+// ======================================================
+// TARGETS
+// ======================================================
+
+function resolveTargets(targets) {
+
+    if (!Array.isArray(targets)) {
+        return [];
+    }
+
+
+    if (targets.includes("all")) {
+
+        return [
+            "terminal",
+            ...devices.keys()
+        ];
+
+    }
+
+
+    return targets.filter(id => {
+
+        return (
+            id === "terminal" ||
+            devices.has(id)
+        );
+
+    });
+
+}
+
+
+// ======================================================
+// TRANSFER CREATION
+// ======================================================
+
+function createTransfer(
+    data,
+    senderId,
+    senderName
+) {
+
+    const transfer = {
+
+        id: makeId(10),
+
+        senderId,
+
+        senderName,
+
+        targets: data.targets || [],
+
+        kind: data.kind,
+
+        name: data.name || null,
+
+        size: data.size || 0,
+
+        mime: data.mime || "",
+
+        text:
+            data.text !== undefined
+                ? data.text
+                : null,
+
+        filePath:
+            data.filePath || null,
+
+        accepted: new Set(),
+
+        rejected: new Set(),
+
+        receivedChunks: [],
+
+        receivedBytes: 0,
+
+        terminalWaiting: false,
+
+        createdAt: Date.now()
+
+    };
+
+
+    transfers.set(
+        transfer.id,
+        transfer
+    );
+
+
+    return transfer;
+
+}
+
+
+// ======================================================
+// SEND TRANSFER REQUEST
+// ======================================================
+
+function sendTransferRequest(
+    transfer,
+    targetId
+) {
+
+    // --------------------------------------------------
+    // HOST / TERMINAL
+    // --------------------------------------------------
+
+    if (targetId === "terminal") {
+
+        askTerminalApproval(
+            transfer
+        );
+
+        return;
+
+    }
+
+
+    // --------------------------------------------------
+    // BROWSER DEVICE
+    // --------------------------------------------------
+
+    const target =
+        getDevice(targetId);
+
+    if (!target)
+        return;
+
+
+    sendJSON(
+        target.ws,
+        {
+
+            type:
+                "incoming-transfer",
+
+            transferId:
+                transfer.id,
+
+            senderId:
+                transfer.senderId,
+
+            senderName:
+                transfer.senderName,
+
+            kind:
+                transfer.kind,
+
+            name:
+                transfer.name,
+
+            size:
+                transfer.size,
+
+            mime:
+                transfer.mime,
+
+            text:
+                transfer.text
+
+        }
+    );
+
+}
+
+
+// ======================================================
+// TERMINAL INCOMING REQUEST
+// ======================================================
+
+function askTerminalApproval(
+    transfer
+) {
+
     console.log("");
-    console.log(`Transfer ID: ${transfer.id}`);
-    console.log("Accept? (y/n)");
+    console.log(
+        "📥 Incoming Transfer"
+    );
     console.log("");
+
+    console.log(
+        `From: ${transfer.senderName}`
+    );
+
+    console.log(
+        `Type: ${transfer.kind}`
+    );
+
+
+    if (
+        transfer.kind === "text"
+    ) {
+
+        console.log(
+            `Text: ${formatTerminalText(
+                transfer.text
+            )}`
+        );
+
+    } else {
+
+        console.log(
+            `File: ${transfer.name}`
+        );
+
+        console.log(
+            `Size: ${formatSize(
+                transfer.size
+            )}`
+        );
+
+    }
+
+
+    console.log("");
+
+    console.log(
+        `Transfer ID: ${transfer.id}`
+    );
+
+    console.log(
+        "Accept? (y/n)"
+    );
+
+    console.log("");
+
 
     pendingTerminalTransfers.set(
         transfer.id,
         transfer
     );
+
+
+    transfer.terminalWaiting = true;
+
 }
+
+
+// ======================================================
+// TERMINAL APPROVE / REJECT
+// ======================================================
+
+function getOldestPendingTerminalTransfer() {
+
+    for (
+        const transfer
+        of pendingTerminalTransfers.values()
+    ) {
+
+        return transfer;
+
+    }
+
+    return null;
+
+}
+
+
+function terminalAccept(
+    transferId
+) {
+
+    const transfer =
+        transfers.get(
+            transferId
+        );
+
+
+    if (!transfer) {
+
+        console.log(
+            "❌ Transfer not found."
+        );
+
+        return;
+
+    }
+
+
+    pendingTerminalTransfers.delete(
+        transferId
+    );
+
+
+    transfer.terminalWaiting =
+        false;
+
+
+    acceptTerminalTransfer(
+        transfer
+    );
+
+}
+
+
+function terminalReject(
+    transferId
+) {
+
+    const transfer =
+        transfers.get(
+            transferId
+        );
+
+
+    if (!transfer) {
+
+        console.log(
+            "❌ Transfer not found."
+        );
+
+        return;
+
+    }
+
+
+    pendingTerminalTransfers.delete(
+        transferId
+    );
+
+
+    transfer.terminalWaiting =
+        false;
+
+
+    rejectTerminalTransfer(
+        transfer
+    );
+
+}
+
+
+// ======================================================
+// HOST ACCEPT
+// ======================================================
+
+function acceptTerminalTransfer(
+    transfer
+) {
+
+    if (
+        !transfer.targets.includes(
+            "terminal"
+        )
+    ) {
+
+        console.log(
+            "❌ This transfer was not sent to the host."
+        );
+
+        return;
+
+    }
+
+
+    transfer.accepted.add(
+        "terminal"
+    );
+
+
+    const sender =
+        devices.get(
+            transfer.senderId
+        );
+
+
+    if (!sender) {
+
+        console.log(
+            "❌ Sender disconnected."
+        );
+
+        return;
+
+    }
+
+
+    // --------------------------------------------------
+    // TEXT
+    // --------------------------------------------------
+
+    if (
+        transfer.kind === "text"
+    ) {
+
+        sendJSON(
+            sender.ws,
+            {
+
+                type:
+                    "transfer-accepted",
+
+                transferId:
+                    transfer.id,
+
+                receiverId:
+                    "terminal",
+
+                receiverName:
+                    "MagicDrop Host"
+
+            }
+        );
+
+
+        console.log("");
+        console.log(
+            "💬 Received text:"
+        );
+        console.log("");
+
+        console.log(
+            transfer.text
+        );
+
+        console.log("");
+
+        return;
+
+    }
+
+
+    // --------------------------------------------------
+    // FILE
+    // --------------------------------------------------
+
+    transfer.hostReceiving =
+        true;
+
+
+    sendJSON(
+        sender.ws,
+        {
+
+            type:
+                "upload-approved",
+
+            transferId:
+                transfer.id,
+
+            receiverId:
+                "terminal",
+
+            receiverName:
+                "MagicDrop Host"
+
+        }
+    );
+
+
+    console.log(
+        "📥 Waiting for file upload..."
+    );
+
+}
+
+
+// ======================================================
+// HOST REJECT
+// ======================================================
+
+function rejectTerminalTransfer(
+    transfer
+) {
+
+    transfer.rejected.add(
+        "terminal"
+    );
+
+
+    const sender =
+        devices.get(
+            transfer.senderId
+        );
+
+
+    if (sender) {
+
+        sendJSON(
+            sender.ws,
+            {
+
+                type:
+                    "transfer-rejected",
+
+                transferId:
+                    transfer.id,
+
+                receiverId:
+                    "terminal",
+
+                receiverName:
+                    "MagicDrop Host"
+
+            }
+        );
+
+    }
+
+
+    console.log(
+        `❌ Rejected: ${transfer.id}`
+    );
+
+}
+
+
+// ======================================================
+// BROWSER ACCEPT
+// ======================================================
+
+function acceptTransfer(
+    ws,
+    data
+) {
+
+    const transfer =
+        transfers.get(
+            data.transferId
+        );
+
+
+    if (!transfer)
+        return;
+
+
+    const receiver =
+        devices.get(
+            ws.deviceId
+        );
+
+
+    if (!receiver)
+        return;
+
+
+    // Make sure receiver was actually
+    // a target of this transfer.
+
+    if (
+        !transfer.targets.includes(
+            receiver.id
+        )
+    ) {
+
+        return;
+
+    }
+
+
+    transfer.accepted.add(
+        receiver.id
+    );
+
+
+    const sender =
+        devices.get(
+            transfer.senderId
+        );
+
+
+    // ==================================================
+    // TERMINAL WAS SENDER
+    // ==================================================
+
+    if (
+        transfer.senderId === "terminal"
+    ) {
+
+        if (
+            transfer.kind === "text"
+        ) {
+
+            sendJSON(
+                receiver.ws,
+                {
+
+                    type:
+                        "text-received",
+
+                    transferId:
+                        transfer.id,
+
+                    senderName:
+                        transfer.senderName,
+
+                    text:
+                        transfer.text
+
+                }
+            );
+
+            return;
+
+        }
+
+
+        sendTerminalFileToReceiver(
+            transfer,
+            receiver.id
+        );
+
+        return;
+
+    }
+
+
+    // ==================================================
+    // BROWSER WAS SENDER
+    // ==================================================
+
+    if (sender) {
+
+        sendJSON(
+            sender.ws,
+            {
+
+                type:
+                    "transfer-accepted",
+
+                transferId:
+                    transfer.id,
+
+                receiverId:
+                    receiver.id,
+
+                receiverName:
+                    receiver.name
+
+            }
+        );
+
+    }
+
+
+    // ==================================================
+    // TEXT
+    // ==================================================
+
+    if (
+        transfer.kind === "text"
+    ) {
+
+        sendJSON(
+            receiver.ws,
+            {
+
+                type:
+                    "text-received",
+
+                transferId:
+                    transfer.id,
+
+                senderName:
+                    transfer.senderName,
+
+                text:
+                    transfer.text
+
+            }
+        );
+
+        return;
+
+    }
+
+
+    // ==================================================
+    // FILE
+    // ==================================================
+
+    if (sender) {
+
+        sendJSON(
+            sender.ws,
+            {
+
+                type:
+                    "upload-approved",
+
+                transferId:
+                    transfer.id,
+
+                receiverId:
+                    receiver.id,
+
+                receiverName:
+                    receiver.name
+
+            }
+        );
+
+    }
+
+}
+
+
+// ======================================================
+// BROWSER REJECT
+// ======================================================
+
+function rejectTransfer(
+    ws,
+    data
+) {
+
+    const transfer =
+        transfers.get(
+            data.transferId
+        );
+
+
+    if (!transfer)
+        return;
+
+
+    const receiver =
+        devices.get(
+            ws.deviceId
+        );
+
+
+    if (!receiver)
+        return;
+
+
+    if (
+        !transfer.targets.includes(
+            receiver.id
+        )
+    ) {
+
+        return;
+
+    }
+
+
+    transfer.rejected.add(
+        receiver.id
+    );
+
+
+    const sender =
+        devices.get(
+            transfer.senderId
+        );
+
+
+    if (sender) {
+
+        sendJSON(
+            sender.ws,
+            {
+
+                type:
+                    "transfer-rejected",
+
+                transferId:
+                    transfer.id,
+
+                receiverId:
+                    receiver.id,
+
+                receiverName:
+                    receiver.name
+
+            }
+        );
+
+    }
+
+}
+
+
+// ======================================================
+// TERMINAL → BROWSER FILE
+// ======================================================
 
 function sendTerminalFileToReceiver(
     transfer,
@@ -87,6 +967,7 @@ function sendTerminalFileToReceiver(
         devices.get(
             receiverId
         );
+
 
     if (!receiver)
         return;
@@ -138,15 +1019,20 @@ function sendTerminalFileToReceiver(
         chunk => {
 
             if (
-                receiver.ws.readyState ===
+                receiver.ws.readyState !==
                 WebSocket.OPEN
             ) {
 
-                receiver.ws.send(
-                    chunk
-                );
+                stream.destroy();
+
+                return;
 
             }
+
+
+            receiver.ws.send(
+                chunk
+            );
 
         }
     );
@@ -202,6 +1088,12 @@ function sendTerminalFileToReceiver(
     );
 
 }
+
+
+// ======================================================
+// BROWSER → BROWSER / HOST BINARY
+// ======================================================
+
 function handleBinary(
     ws,
     buffer
@@ -209,6 +1101,7 @@ function handleBinary(
 
     const transferId =
         ws.activeUpload;
+
 
     if (!transferId)
         return;
@@ -219,32 +1112,39 @@ function handleBinary(
             transferId
         );
 
+
     if (!transfer)
         return;
 
 
+    const chunk =
+        Buffer.from(buffer);
+
+
     transfer.receivedChunks.push(
-        Buffer.from(buffer)
+        chunk
     );
 
+
     transfer.receivedBytes +=
-        buffer.length;
+        chunk.length;
 
 
-    // =========================
-    // SEND TO APPROVED CLIENTS
-    // =========================
+    // --------------------------------------------------
+    // FORWARD TO APPROVED BROWSER CLIENTS
+    // --------------------------------------------------
 
     for (
         const receiverId
         of transfer.accepted
     ) {
 
-        // Host doesn't have WebSocket
         if (
             receiverId === "terminal"
         ) {
+
             continue;
+
         }
 
 
@@ -252,6 +1152,7 @@ function handleBinary(
             devices.get(
                 receiverId
             );
+
 
         if (!receiver)
             continue;
@@ -263,745 +1164,7 @@ function handleBinary(
         ) {
 
             receiver.ws.send(
-                buffer
-            );
-
-        }
-
-    }
-
-}
-function getLocalIP() {
-
-    const interfaces =
-        os.networkInterfaces();
-
-    for (const name of Object.keys(interfaces)) {
-
-        for (const iface of interfaces[name]) {
-
-            if (
-                iface.family === "IPv4" &&
-                !iface.internal
-            ) {
-                return iface.address;
-            }
-
-        }
-
-    }
-
-    return "localhost";
-}
-function acceptTerminalTransfer(
-    transferId
-) {
-
-    const transfer =
-        transfers.get(transferId);
-
-    if (!transfer) {
-
-        console.log(
-            "❌ Transfer not found."
-        );
-
-        return;
-    }
-
-
-    if (!transfer.targets.includes("terminal")) {
-
-        console.log(
-            "❌ This transfer is not for the host."
-        );
-
-        return;
-    }
-
-
-    transfer.accepted.add(
-        "terminal"
-    );
-
-
-    const sender =
-        devices.get(
-            transfer.senderId
-        );
-
-
-    if (!sender) {
-
-        console.log(
-            "❌ Sender is no longer connected."
-        );
-
-        return;
-    }
-
-
-    sendJSON(sender.ws, {
-
-        type:
-            "transfer-accepted",
-
-        transferId:
-            transfer.id,
-
-        receiverId:
-            "terminal",
-
-        receiverName:
-            "MagicDrop Host"
-
-    });
-
-
-    // TEXT
-
-    if (
-        transfer.kind === "text"
-    ) {
-
-        console.log("");
-        console.log("💬 Received text:");
-        console.log("");
-
-        console.log(
-            transfer.text
-        );
-
-        console.log("");
-
-        return;
-    }
-
-
-    // FILE
-
-    transfer.hostReceiving = true;
-
-    sendJSON(sender.ws, {
-
-        type:
-            "upload-approved",
-
-        transferId:
-            transfer.id,
-
-        receiverId:
-            "terminal",
-
-        receiverName:
-            "MagicDrop Host"
-
-    });
-
-
-    console.log(
-        "📥 Waiting for file upload..."
-    );
-
-            }
-
-function rejectTerminalTransfer(
-    transferId
-) {
-
-    const transfer =
-        transfers.get(transferId);
-
-    if (!transfer) {
-
-        console.log(
-            "❌ Transfer not found."
-        );
-
-        return;
-    }
-
-
-    transfer.rejected.add(
-        "terminal"
-    );
-
-
-    const sender =
-        devices.get(
-            transfer.senderId
-        );
-
-
-    if (sender) {
-
-        sendJSON(sender.ws, {
-
-            type:
-                "transfer-rejected",
-
-            transferId:
-                transfer.id,
-
-            receiverId:
-                "terminal",
-
-            receiverName:
-                "MagicDrop Host"
-
-        });
-
-    }
-
-
-    console.log(
-        "❌ Transfer rejected."
-    );
-
-        }
-function formatTerminalText(text) {
-
-    if (!text)
-        return "";
-
-    if (text.length <= 500)
-        return text;
-
-    return (
-        text.substring(0, 300) +
-        "\n...\n" +
-        text.substring(text.length - 150)
-    );
-
-        }
-function handleTerminalIncoming(transfer) {
-
-    console.log("");
-    console.log("📥 Incoming Transfer");
-    console.log("");
-    console.log(
-        `From: ${transfer.senderName}`
-    );
-
-    console.log(
-        `Type: ${transfer.kind}`
-    );
-
-    if (transfer.kind === "text") {
-
-        console.log(
-            `Text: ${formatTerminalText(transfer.text)}`
-        );
-
-    } else {
-
-        console.log(
-            `File: ${transfer.name}`
-        );
-
-        console.log(
-            `Size: ${formatSize(transfer.size)}`
-        );
-
-    }
-
-    console.log("");
-
-    console.log(
-        `Transfer ID: ${transfer.id}`
-    );
-
-    console.log(
-        "Accept? (y/n)"
-    );
-
-    transfer.terminalWaiting = true;
-
-}
-
-// ==============================
-// SEND JSON
-// ==============================
-
-function sendJSON(ws, data) {
-
-    if (
-        ws &&
-        ws.readyState === WebSocket.OPEN
-    ) {
-        ws.send(JSON.stringify(data));
-    }
-
-}
-function broadcastDevices() {
-
-    const list = [
-        {
-            id: "terminal",
-            name: "💻 MagicDrop Host"
-        },
-
-        ...[...devices.values()].map(device => ({
-            id: device.id,
-            name: device.name
-        }))
-    ];
-
-    const message = {
-        type: "devices",
-        devices: list
-    };
-
-    for (const device of devices.values()) {
-        sendJSON(device.ws, message);
-    }
-
-}
-
-
-// ==============================
-// FIND DEVICE
-// ==============================
-
-function getDevice(id) {
-
-    return devices.get(id);
-
-}
-
-
-// ==============================
-// CREATE TRANSFER
-// ==============================
-
-function createTransfer(data, sender) {
-
-    const transferId =
-        Math.random()
-            .toString(36)
-            .substring(2, 12);
-
-    const transfer = {
-
-        id: transferId,
-
-        senderId: sender.id,
-
-        senderName: sender.name,
-
-        targets: data.targets,
-
-        kind: data.kind,
-
-        name: data.name || null,
-
-        size: data.size || 0,
-
-        mime: data.mime || "",
-
-        text: data.text || null,
-
-        accepted: new Set(),
-
-        rejected: new Set(),
-
-        receivedChunks: [],
-
-        receivedBytes: 0,
-
-        terminalSource: false
-
-    };
-
-    transfers.set(
-        transferId,
-        transfer
-    );
-
-    return transfer;
-}
-
-function sendTransferRequest(
-    transfer,
-    targetId
-) {
-
-    // =========================
-    // HOST / TERMINAL
-    // =========================
-
-    if (targetId === "terminal") {
-
-        handleTerminalIncoming(transfer);
-
-        return;
-    }
-
-
-    // =========================
-    // NORMAL DEVICE
-    // =========================
-
-    const target =
-        getDevice(targetId);
-
-    if (!target)
-        return;
-
-    sendJSON(target.ws, {
-
-        type: "incoming-transfer",
-
-        transferId:
-            transfer.id,
-
-        senderId:
-            transfer.senderId,
-
-        senderName:
-            transfer.senderName,
-
-        kind:
-            transfer.kind,
-
-        name:
-            transfer.name,
-
-        size:
-            transfer.size,
-
-        mime:
-            transfer.mime,
-
-        text:
-            transfer.text
-
-    });
-
-    }
-
-function resolveTargets(targets) {
-
-    if (targets.includes("all")) {
-
-        return [
-            "terminal",
-            ...devices.keys()
-        ];
-
-    }
-
-    return targets.filter(id =>
-        id === "terminal" ||
-        devices.has(id)
-    );
-
-            }
-
-// ==============================
-// HANDLE TRANSFER REQUEST
-// ==============================
-
-function handleTransferRequest(
-    ws,
-    data
-) {
-
-    if (!ws.deviceId)
-        return;
-
-    const sender =
-        devices.get(ws.deviceId);
-
-    if (!sender)
-        return;
-
-    const targets =
-        resolveTargets(
-            data.targets || []
-        )
-        .filter(
-            id =>
-                id !== sender.id
-        );
-
-    if (!targets.length) {
-
-        sendJSON(ws, {
-            type: "error",
-            message:
-                "No valid recipients selected."
-        });
-
-        return;
-    }
-
-
-    const transfer =
-        createTransfer(
-            {
-                ...data,
-                targets
-            },
-            sender
-        );
-
-
-    for (const targetId of targets) {
-
-        sendTransferRequest(
-            transfer,
-            targetId
-        );
-
-    }
-
-
-    console.log(
-        `Transfer request: ${sender.name} → ${targets.length} device(s)`
-    );
-
-}
-
-
-// ==============================
-// ACCEPT
-// ==============================
-
-function acceptTransfer(
-    ws,
-    data
-) {
-
-    const transfer =
-        transfers.get(
-            data.transferId
-        );
-
-    if (!transfer)
-        return;
-
-    const receiver =
-        devices.get(ws.deviceId);
-
-    if (!receiver)
-        return;
-
-
-    transfer.accepted.add(
-        receiver.id
-    );
-
-
-    const sender =
-        devices.get(
-            transfer.senderId
-        );
-if (
-    transfer.senderId === "terminal"
-) {
-
-    transfer.accepted.add(
-        receiver.id
-    );
-
-    sendTerminalFileToReceiver(
-        transfer,
-        receiver.id
-    );
-
-    return;
-
-}
-
-    if (sender) {
-
-        sendJSON(sender.ws, {
-
-            type:
-                "transfer-accepted",
-
-            transferId:
-                transfer.id,
-
-            receiverId:
-                receiver.id,
-
-            receiverName:
-                receiver.name
-
-        });
-
-    }
-
-
-    // Text can be delivered immediately.
-    if (
-        transfer.kind === "text"
-    ) {
-
-        sendJSON(
-            receiver.ws,
-            {
-
-                type:
-                    "text-received",
-
-                senderName:
-                    transfer.senderName,
-
-                text:
-                    transfer.text,
-
-                transferId:
-                    transfer.id
-
-            }
-        );
-
-        return;
-    }
-
-
-    // Tell sender to begin binary upload.
-    if (sender) {
-
-        sendJSON(
-            sender.ws,
-            {
-
-                type:
-                    "upload-approved",
-
-                transferId:
-                    transfer.id,
-
-                receiverId:
-                    receiver.id,
-
-                receiverName:
-                    receiver.name
-
-            }
-        );
-
-    }
-
-}
-
-
-// ==============================
-// REJECT
-// ==============================
-
-function rejectTransfer(
-    ws,
-    data
-) {
-
-    const transfer =
-        transfers.get(
-            data.transferId
-        );
-
-    if (!transfer)
-        return;
-
-    const receiver =
-        devices.get(ws.deviceId);
-
-    if (!receiver)
-        return;
-
-
-    transfer.rejected.add(
-        receiver.id
-    );
-
-
-    const sender =
-        devices.get(
-            transfer.senderId
-        );
-
-
-    if (sender) {
-
-        sendJSON(sender.ws, {
-
-            type:
-                "transfer-rejected",
-
-            transferId:
-                transfer.id,
-
-            receiverId:
-                receiver.id,
-
-            receiverName:
-                receiver.name
-
-        });
-
-    }
-
-}
-
-
-// ==============================
-// BINARY DATA
-// ==============================
-
-function handleBinary(
-    ws,
-    buffer
-) {
-
-    const transferId =
-        ws.activeUpload;
-
-    if (!transferId)
-        return;
-
-    const transfer =
-        transfers.get(
-            transferId
-        );
-
-    if (!transfer)
-        return;
-
-
-    transfer.receivedChunks.push(
-        Buffer.from(buffer)
-    );
-
-    transfer.receivedBytes +=
-        buffer.length;
-
-
-    // Forward binary data to
-    // every approved receiver.
-    for (
-        const receiverId
-        of transfer.accepted
-    ) {
-
-        const receiver =
-            devices.get(
-                receiverId
-            );
-
-        if (!receiver)
-            continue;
-
-        if (
-            receiver.ws.readyState ===
-            WebSocket.OPEN
-        ) {
-
-            receiver.ws.send(
-                buffer
+                chunk
             );
 
         }
@@ -1011,9 +1174,9 @@ function handleBinary(
 }
 
 
-// ==============================
-// FINISH UPLOAD
-// ==============================
+// ======================================================
+// FINISH BROWSER UPLOAD
+// ======================================================
 
 function finishUpload(
     ws,
@@ -1025,57 +1188,111 @@ function finishUpload(
             data.transferId
         );
 
+
     if (!transfer)
         return;
 
-if (
-    transfer.accepted.has("terminal") &&
-    transfer.receivedChunks.length
-) {
 
-    const safeName =
-        path.basename(
-            transfer.name || "received-file"
+    // --------------------------------------------------
+    // SAVE TO HOST
+    // --------------------------------------------------
+
+    if (
+        transfer.accepted.has(
+            "terminal"
+        ) &&
+        transfer.receivedChunks.length
+    ) {
+
+        const safeName =
+            path.basename(
+                transfer.name ||
+                "received-file"
+            );
+
+
+        let outputPath =
+            path.join(
+                DOWNLOAD_DIR,
+                safeName
+            );
+
+
+        // Prevent overwriting
+        // existing files.
+
+        if (fs.existsSync(outputPath)) {
+
+            const ext =
+                path.extname(safeName);
+
+            const base =
+                path.basename(
+                    safeName,
+                    ext
+                );
+
+
+            outputPath =
+                path.join(
+                    DOWNLOAD_DIR,
+                    `${base}-${Date.now()}${ext}`
+                );
+
+        }
+
+
+        const fileBuffer =
+            Buffer.concat(
+                transfer.receivedChunks
+            );
+
+
+        fs.writeFileSync(
+            outputPath,
+            fileBuffer
         );
 
-    const outputPath =
-        path.join(
-            DOWNLOAD_DIR,
-            safeName
+
+        console.log("");
+        console.log(
+            `📥 File received: ${path.basename(
+                outputPath
+            )}`
         );
 
-
-    const fileBuffer =
-        Buffer.concat(
-            transfer.receivedChunks
+        console.log(
+            `📁 Saved to: ${outputPath}`
         );
 
+        console.log("");
 
-    fs.writeFileSync(
-        outputPath,
-        fileBuffer
-    );
+    }
 
 
-    console.log("");
-    console.log(
-        `📥 File received: ${safeName}`
-    );
+    // --------------------------------------------------
+    // TELL BROWSER RECEIVERS
+    // --------------------------------------------------
 
-    console.log(
-        `📁 Saved to: ${outputPath}`
-    );
-
-}
     for (
         const receiverId
         of transfer.accepted
     ) {
 
+        if (
+            receiverId === "terminal"
+        ) {
+
+            continue;
+
+        }
+
+
         const receiver =
             devices.get(
                 receiverId
             );
+
 
         if (!receiver)
             continue;
@@ -1123,26 +1340,932 @@ if (
     );
 
 
-    transfer.receivedChunks = [];
+    transfer.receivedChunks =
+        [];
 
-    transfer.receivedBytes = 0;
+    transfer.receivedBytes =
+        0;
 
-    ws.activeUpload = null;
+
+    ws.activeUpload =
+        null;
 
 }
 
 
-// ==============================
-// START SERVER
-// ==============================
+// ======================================================
+// UPLOAD START
+// ======================================================
+
+function startUpload(
+    ws,
+    data
+) {
+
+    const transfer =
+        transfers.get(
+            data.transferId
+        );
+
+
+    if (!transfer)
+        return;
+
+
+    // Only original sender
+    // can upload.
+
+    if (
+        transfer.senderId !==
+        ws.deviceId
+    ) {
+
+        return;
+
+    }
+
+
+    // Sender must have at least
+    // one approved receiver.
+
+    if (
+        transfer.accepted.size === 0
+    ) {
+
+        return;
+
+    }
+
+
+    ws.activeUpload =
+        data.transferId;
+
+}
+
+
+// ======================================================
+// HANDLE TRANSFER REQUEST
+// ======================================================
+
+function handleTransferRequest(
+    ws,
+    data
+) {
+
+    if (!ws.deviceId)
+        return;
+
+
+    const sender =
+        devices.get(
+            ws.deviceId
+        );
+
+
+    if (!sender)
+        return;
+
+
+    const targets =
+        resolveTargets(
+            data.targets
+        )
+        .filter(
+            id =>
+                id !== sender.id
+        );
+
+
+    if (!targets.length) {
+
+        sendJSON(
+            ws,
+            {
+
+                type:
+                    "error",
+
+                message:
+                    "No valid recipients selected."
+
+            }
+        );
+
+        return;
+
+    }
+
+
+    const transfer =
+        createTransfer(
+            {
+                ...data,
+                targets
+            },
+            sender.id,
+            sender.name
+        );
+
+
+    for (
+        const targetId
+        of targets
+    ) {
+
+        sendTransferRequest(
+            transfer,
+            targetId
+        );
+
+    }
+
+
+    console.log(
+        `Transfer request: ${sender.name} → ${targets.length} device(s)`
+    );
+
+}
+
+
+// ======================================================
+// TERMINAL TEXT
+// ======================================================
+
+function sendTerminalText(
+    command
+) {
+
+    let text =
+        command.trim();
+
+
+    let targets;
+
+
+    if (
+        text.endsWith(
+            " --all"
+        )
+    ) {
+
+        text =
+            text.substring(
+                0,
+                text.length - 6
+            ).trim();
+
+
+        targets = [
+            ...devices.keys()
+        ];
+
+    } else {
+
+        // send-text hello <deviceId>
+
+        const parts =
+            text.split(/\s+/);
+
+
+        const possibleId =
+            parts[parts.length - 1];
+
+
+        if (
+            devices.has(
+                possibleId
+            )
+        ) {
+
+            targets = [
+                possibleId
+            ];
+
+
+            parts.pop();
+
+            text =
+                parts.join(" ");
+
+        } else {
+
+            targets = [
+                ...devices.keys()
+            ];
+
+        }
+
+    }
+
+
+    if (!text) {
+
+        console.log(
+            "❌ Text is empty."
+        );
+
+        return;
+
+    }
+
+
+    if (!targets.length) {
+
+        console.log(
+            "❌ No devices connected."
+        );
+
+        return;
+
+    }
+
+
+    const transfer =
+        createTransfer(
+            {
+                targets,
+                kind: "text",
+                text,
+                size:
+                    Buffer.byteLength(
+                        text
+                    )
+            },
+            "terminal",
+            "MagicDrop Host"
+        );
+
+
+    for (
+        const targetId
+        of targets
+    ) {
+
+        sendTransferRequest(
+            transfer,
+            targetId
+        );
+
+    }
+
+
+    console.log(
+        `📤 Text waiting for approval from ${targets.length} device(s).`
+    );
+
+}
+
+
+// ======================================================
+// MIME
+// ======================================================
+
+function getMimeType(
+    filePath
+) {
+
+    const ext =
+        path.extname(
+            filePath
+        ).toLowerCase();
+
+
+    const types = {
+
+        ".jpg":
+            "image/jpeg",
+
+        ".jpeg":
+            "image/jpeg",
+
+        ".png":
+            "image/png",
+
+        ".gif":
+            "image/gif",
+
+        ".webp":
+            "image/webp",
+
+        ".bmp":
+            "image/bmp",
+
+        ".svg":
+            "image/svg+xml",
+
+        ".pdf":
+            "application/pdf",
+
+        ".mp4":
+            "video/mp4",
+
+        ".webm":
+            "video/webm",
+
+        ".mkv":
+            "video/x-matroska",
+
+        ".mp3":
+            "audio/mpeg",
+
+        ".wav":
+            "audio/wav",
+
+        ".zip":
+            "application/zip",
+
+        ".json":
+            "application/json",
+
+        ".txt":
+            "text/plain",
+
+        ".html":
+            "text/html",
+
+        ".css":
+            "text/css",
+
+        ".js":
+            "text/javascript"
+
+    };
+
+
+    return (
+        types[ext] ||
+        "application/octet-stream"
+    );
+
+}
+
+
+// ======================================================
+// TERMINAL FILE
+// ======================================================
+
+function sendTerminalFile(
+    command
+) {
+
+    let filePath =
+        command.trim();
+
+
+    let targets;
+
+
+    // -----------------------------------------------
+    // --all
+    // -----------------------------------------------
+
+    if (
+        filePath.endsWith(
+            " --all"
+        )
+    ) {
+
+        filePath =
+            filePath.substring(
+                0,
+                filePath.length - 6
+            ).trim();
+
+
+        targets = [
+            ...devices.keys()
+        ];
+
+    } else {
+
+        // -------------------------------------------
+        // send file deviceId
+        // -------------------------------------------
+
+        const parts =
+            filePath.split(/\s+/);
+
+
+        const possibleId =
+            parts[parts.length - 1];
+
+
+        if (
+            devices.has(
+                possibleId
+            )
+        ) {
+
+            targets = [
+                possibleId
+            ];
+
+
+            parts.pop();
+
+
+            filePath =
+                parts.join(" ");
+
+        } else {
+
+            targets = [
+                ...devices.keys()
+            ];
+
+        }
+
+    }
+
+
+    // Remove quotes around path.
+
+    if (
+        (
+            filePath.startsWith('"') &&
+            filePath.endsWith('"')
+        ) ||
+        (
+            filePath.startsWith("'") &&
+            filePath.endsWith("'")
+        )
+    ) {
+
+        filePath =
+            filePath.substring(
+                1,
+                filePath.length - 1
+            );
+
+    }
+
+
+    if (
+        !fs.existsSync(
+            filePath
+        )
+    ) {
+
+        console.log(
+            "❌ File not found."
+        );
+
+        return;
+
+    }
+
+
+    const stat =
+        fs.statSync(
+            filePath
+        );
+
+
+    if (!stat.isFile()) {
+
+        console.log(
+            "❌ Not a file."
+        );
+
+        return;
+
+    }
+
+
+    if (!targets.length) {
+
+        console.log(
+            "❌ No devices connected."
+        );
+
+        return;
+
+    }
+
+
+    const name =
+        path.basename(
+            filePath
+        );
+
+
+    const mime =
+        getMimeType(
+            filePath
+        );
+
+
+    const transfer =
+        createTransfer(
+            {
+
+                targets,
+
+                kind:
+                    mime.startsWith(
+                        "image/"
+                    )
+                        ? "image"
+                        : "file",
+
+                name,
+
+                size:
+                    stat.size,
+
+                mime,
+
+                filePath
+
+            },
+            "terminal",
+            "MagicDrop Host"
+        );
+
+
+    for (
+        const targetId
+        of targets
+    ) {
+
+        sendTransferRequest(
+            transfer,
+            targetId
+        );
+
+    }
+
+
+    console.log(
+        `📤 ${name} waiting for approval from ${targets.length} device(s).`
+    );
+
+}
+
+
+// ======================================================
+// TERMINAL TEXT PREVIEW
+// ======================================================
+
+function formatTerminalText(
+    text
+) {
+
+    if (!text)
+        return "";
+
+
+    if (
+        text.length <= 500
+    ) {
+
+        return text;
+
+    }
+
+
+    return (
+
+        text.substring(
+            0,
+            300
+        )
+
+        +
+
+        "\n...\n"
+
+        +
+
+        text.substring(
+            text.length - 150
+        )
+
+    );
+
+}
+
+
+// ======================================================
+// CLI
+// ======================================================
+
+function startCLI() {
+
+    const rl =
+        readline.createInterface({
+
+            input:
+                process.stdin,
+
+            output:
+                process.stdout,
+
+            prompt:
+                "md> "
+
+        });
+
+
+    console.log(`
+Commands:
+
+  devices
+  send <file>
+  send <file> <deviceId>
+  send <file> --all
+
+  send-text <text>
+  send-text <text> <deviceId>
+  send-text <text> --all
+
+  accept <transferId>
+  reject <transferId>
+
+  y
+  n
+
+  help
+  exit
+`);
+
+
+    rl.prompt();
+
+
+    rl.on(
+        "line",
+        line => {
+
+            const input =
+                line.trim();
+
+
+            // ==================================================
+            // Y / N
+            // ==================================================
+
+            if (
+                input.toLowerCase() === "y"
+            ) {
+
+                const transfer =
+                    getOldestPendingTerminalTransfer();
+
+
+                if (!transfer) {
+
+                    console.log(
+                        "No pending transfer."
+                    );
+
+                } else {
+
+                    terminalAccept(
+                        transfer.id
+                    );
+
+                }
+
+
+                rl.prompt();
+
+                return;
+
+            }
+
+
+            if (
+                input.toLowerCase() === "n"
+            ) {
+
+                const transfer =
+                    getOldestPendingTerminalTransfer();
+
+
+                if (!transfer) {
+
+                    console.log(
+                        "No pending transfer."
+                    );
+
+                } else {
+
+                    terminalReject(
+                        transfer.id
+                    );
+
+                }
+
+
+                rl.prompt();
+
+                return;
+
+            }
+
+
+            if (!input) {
+
+                rl.prompt();
+
+                return;
+
+            }
+
+
+            // ==================================================
+            // DEVICES
+            // ==================================================
+
+            if (
+                input === "devices"
+            ) {
+
+                if (!devices.size) {
+
+                    console.log(
+                        "No devices connected."
+                    );
+
+                } else {
+
+                    console.log("");
+
+                    for (
+                        const device
+                        of devices.values()
+                    ) {
+
+                        console.log(
+                            `${device.id}  ${device.name}`
+                        );
+
+                    }
+
+                    console.log("");
+
+                }
+
+            }
+
+
+            // ==================================================
+            // ACCEPT ID
+            // ==================================================
+
+            else if (
+                input.startsWith(
+                    "accept "
+                )
+            ) {
+
+                const id =
+                    input
+                        .substring(7)
+                        .trim();
+
+
+                terminalAccept(
+                    id
+                );
+
+            }
+
+
+            // ==================================================
+            // REJECT ID
+            // ==================================================
+
+            else if (
+                input.startsWith(
+                    "reject "
+                )
+            ) {
+
+                const id =
+                    input
+                        .substring(7)
+                        .trim();
+
+
+                terminalReject(
+                    id
+                );
+
+            }
+
+
+            // ==================================================
+            // SEND TEXT
+            // ==================================================
+
+            else if (
+                input.startsWith(
+                    "send-text "
+                )
+            ) {
+
+                sendTerminalText(
+                    input.substring(10)
+                );
+
+            }
+
+
+            // ==================================================
+            // SEND FILE
+            // ==================================================
+
+            else if (
+                input.startsWith(
+                    "send "
+                )
+            ) {
+
+                sendTerminalFile(
+                    input.substring(5)
+                );
+
+            }
+
+
+            // ==================================================
+            // HELP
+            // ==================================================
+
+            else if (
+                input === "help"
+            ) {
+
+                console.log(`
+devices
+
+send <file>
+send <file> <deviceId>
+send <file> --all
+
+send-text <text>
+send-text <text> <deviceId>
+send-text <text> --all
+
+accept <transferId>
+reject <transferId>
+
+y
+n
+
+exit
+`);
+
+            }
+
+
+            // ==================================================
+            // EXIT
+            // ==================================================
+
+            else if (
+                input === "exit"
+            ) {
+
+                process.exit(0);
+
+            }
+
+
+            else {
+
+                console.log(
+                    "Unknown command. Type help."
+                );
+
+            }
+
+
+            rl.prompt();
+
+        }
+    );
+
+}
+
+
+// ======================================================
+// SERVER
+// ======================================================
 
 function startServer() {
 
     const app =
         express();
 
+
     const server =
-        http.createServer(app);
+        http.createServer(
+            app
+        );
+
 
     const wss =
         new WebSocket.Server({
@@ -1160,6 +2283,10 @@ function startServer() {
     );
 
 
+    // ==================================================
+    // WEBSOCKET
+    // ==================================================
+
     wss.on(
         "connection",
         ws => {
@@ -1173,7 +2300,10 @@ function startServer() {
                 "message",
                 (message, isBinary) => {
 
-                    // Binary upload
+                    // ==========================================
+                    // BINARY
+                    // ==========================================
+
                     if (isBinary) {
 
                         handleBinary(
@@ -1182,10 +2312,16 @@ function startServer() {
                         );
 
                         return;
+
                     }
 
 
+                    // ==========================================
+                    // JSON
+                    // ==========================================
+
                     let data;
+
 
                     try {
 
@@ -1201,9 +2337,9 @@ function startServer() {
                     }
 
 
-                    // ======================
+                    // ==========================================
                     // JOIN
-                    // ======================
+                    // ==========================================
 
                     if (
                         data.type ===
@@ -1211,12 +2347,7 @@ function startServer() {
                     ) {
 
                         const id =
-                            Math.random()
-                                .toString(36)
-                                .substring(
-                                    2,
-                                    10
-                                );
+                            makeId(8);
 
 
                         const device = {
@@ -1224,8 +2355,13 @@ function startServer() {
                             id,
 
                             name:
-                                data.name ||
-                                "Unknown",
+                                String(
+                                    data.name ||
+                                    "Unknown"
+                                ).substring(
+                                    0,
+                                    30
+                                ),
 
                             ws
 
@@ -1243,7 +2379,7 @@ function startServer() {
 
 
                         console.log(
-                            `Connected: ${device.name}`
+                            `Connected: ${device.name} (${id})`
                         );
 
 
@@ -1265,13 +2401,15 @@ function startServer() {
 
                         broadcastDevices();
 
+
                         return;
+
                     }
 
 
-                    // ======================
+                    // ==========================================
                     // TRANSFER REQUEST
-                    // ======================
+                    // ==========================================
 
                     if (
                         data.type ===
@@ -1284,12 +2422,13 @@ function startServer() {
                         );
 
                         return;
+
                     }
 
 
-                    // ======================
+                    // ==========================================
                     // ACCEPT
-                    // ======================
+                    // ==========================================
 
                     if (
                         data.type ===
@@ -1302,12 +2441,13 @@ function startServer() {
                         );
 
                         return;
+
                     }
 
 
-                    // ======================
+                    // ==========================================
                     // REJECT
-                    // ======================
+                    // ==========================================
 
                     if (
                         data.type ===
@@ -1320,36 +2460,32 @@ function startServer() {
                         );
 
                         return;
+
                     }
 
 
-                    // ======================
+                    // ==========================================
                     // UPLOAD START
-                    // ======================
+                    // ==========================================
 
                     if (
                         data.type ===
                         "upload-start"
                     ) {
 
-                        const transfer =
-                            transfers.get(
-                                data.transferId
-                            );
-
-                        if (!transfer)
-                            return;
-
-                        ws.activeUpload =
-                            data.transferId;
+                        startUpload(
+                            ws,
+                            data
+                        );
 
                         return;
+
                     }
 
 
-                    // ======================
+                    // ==========================================
                     // UPLOAD FINISH
-                    // ======================
+                    // ==========================================
 
                     if (
                         data.type ===
@@ -1362,11 +2498,16 @@ function startServer() {
                         );
 
                         return;
+
                     }
 
                 }
             );
 
+
+            // ==================================================
+            // DISCONNECT
+            // ==================================================
 
             ws.on(
                 "close",
@@ -1376,9 +2517,25 @@ function startServer() {
                         ws.deviceId
                     ) {
 
+                        const device =
+                            devices.get(
+                                ws.deviceId
+                            );
+
+
+                        if (device) {
+
+                            console.log(
+                                `Disconnected: ${device.name}`
+                            );
+
+                        }
+
+
                         devices.delete(
                             ws.deviceId
                         );
+
 
                         broadcastDevices();
 
@@ -1391,6 +2548,10 @@ function startServer() {
     );
 
 
+    // ==================================================
+    // START
+    // ==================================================
+
     server.listen(
         PORT,
         "0.0.0.0",
@@ -1398,6 +2559,7 @@ function startServer() {
 
             const ip =
                 getLocalIP();
+
 
             const url =
                 `http://${ip}:${PORT}`;
@@ -1437,6 +2599,7 @@ function startServer() {
                         }
                     );
 
+
                 console.log(qr);
 
             } catch {
@@ -1454,217 +2617,8 @@ function startServer() {
 
             console.log("");
 
+
             startCLI();
-        }
-    );
-
-}
-
-
-// ==============================
-// TERMINAL CLI
-// ==============================
-
-function startCLI() {
-
-    const rl =
-        readline.createInterface({
-            input:
-                process.stdin,
-            output:
-                process.stdout,
-            prompt:
-                "md> "
-        });
-
-
-    console.log(`
-Commands:
-
-  devices
-  send <file>
-  send <file> --all
-  send-text <text>
-  send-text <text> --all
-  help
-  exit
-`);
-
-
-    rl.prompt();
-
-
-rl.on("line", line => {
-
-    const input = line.trim();
-
-    // =========================
-    // TERMINAL TRANSFER ANSWER
-    // =========================
-
-    if (
-        pendingTerminalTransfers.size &&
-        (
-            input.toLowerCase() === "y" ||
-            input.toLowerCase() === "n"
-        )
-    ) {
-
-        const transfer =
-            [...pendingTerminalTransfers.values()][0];
-
-        pendingTerminalTransfers.delete(
-            transfer.id
-        );
-
-        if (
-            input.toLowerCase() === "y"
-        ) {
-
-            console.log(
-                `✅ Accepted: ${transfer.id}`
-            );
-
-            // TODO: send accept-transfer
-            // depending on whether the
-            // transfer came from browser.
-
-        } else {
-
-            console.log(
-                `❌ Rejected: ${transfer.id}`
-            );
-
-            // TODO: send reject-transfer
-        }
-
-        rl.prompt();
-        return;
-    }
-            
-
-
-            if (!input)  return rl.prompt();
-
-
-            if (
-                input === "devices"
-            ) {
-
-                if (!devices.size) {
-
-                    console.log(
-                        "No devices connected."
-                    );
-
-                } else {
-
-                    for (
-                        const device
-                        of devices.values()
-                    ) {
-
-                        console.log(
-                            `${device.id}  ${device.name}`
-                        );
-
-                    }
-
-                }
-
-            }
-                
-
-
-            else if (
-                input === "help"
-            ) {
-
-                console.log(`
-devices
-send <file>
-send <file> --all
-send-text <text>
-send-text <text> --all
-exit
-`);
-
-            }
-
-
-            else if (
-                input === "exit"
-            ) {
-
-                process.exit(0);
-
-            }
-                else if (
-    input.startsWith("accept ")
-) {
-
-    const transferId =
-        input.substring(7).trim();
-
-    acceptTerminalTransfer(
-        transferId
-    );
-
-                }
-                    else if (
-    input.startsWith("reject ")
-) {
-
-    const transferId =
-        input.substring(7).trim();
-
-    rejectTerminalTransfer(
-        transferId
-    );
-
-                    }
-
-
-            else if (
-                input.startsWith(
-                    "send-text "
-                )
-            ) {
-
-                sendTerminalText(
-                    input.substring(
-                        10
-                    )
-                );
-
-            }
-
-
-            else if (
-                input.startsWith(
-                    "send "
-                )
-            ) {
-
-                sendTerminalFile(
-                    input.substring(
-                        5
-                    )
-                );
-
-            }
-
-
-            else {
-
-                console.log(
-                    "Unknown command. Type help."
-                );
-
-            }
-
-
-            rl.prompt();
 
         }
     );
@@ -1672,299 +2626,9 @@ exit
 }
 
 
-// ==============================
-// TERMINAL TEXT
-// ==============================
-
-function sendTerminalText(
-    command
-) {
-
-    const sendAll =
-        command.endsWith(
-            " --all"
-        );
-
-
-    const text =
-        sendAll
-            ? command.substring(
-                0,
-                command.length - 6
-            )
-            : command;
-
-
-    if (!text.trim()) {
-
-        console.log(
-            "Text is empty."
-        );
-
-        return;
-    }
-
-
-    let targets;
-
-
-    if (sendAll) {
-
-        targets =
-            [...devices.keys()];
-
-    } else {
-
-        targets =
-            [...devices.keys()];
-
-    }
-
-
-    if (!targets.length) {
-
-        console.log(
-            "No devices connected."
-        );
-
-        return;
-    }
-
-
-    const transfer = {
-
-        id:
-            Math.random()
-                .toString(36)
-                .substring(
-                    2,
-                    12
-                ),
-
-        senderId:
-            "terminal",
-
-        senderName:
-            "MagicDrop Host",
-
-        kind:
-            "text",
-
-        text,
-
-        size:
-            Buffer.byteLength(
-                text
-            )
-
-    };
-
-
-    transfers.set(
-        transfer.id,
-        transfer
-    );
-
-
-    for (
-        const targetId
-        of targets
-    ) {
-
-        sendTransferRequest(
-            transfer,
-            targetId
-        );
-
-    }
-
-
-    console.log(
-        `📤 Text sent for approval to ${targets.length} device(s).`
-    );
-
-}
-
-
-// ==============================
-// TERMINAL FILE
-// ==============================
-
-function sendTerminalFile(
-    command
-) {
-
-    const sendAll =
-        command.endsWith(
-            " --all"
-        );
-
-
-    const filePath =
-        sendAll
-            ? command.substring(
-                0,
-                command.length - 6
-            ).trim()
-            : command.trim();
-
-
-    if (
-        !fs.existsSync(filePath)
-    ) {
-
-        console.log(
-            "❌ File not found."
-        );
-
-        return;
-    }
-
-
-    const stat =
-        fs.statSync(filePath);
-
-
-    if (!stat.isFile()) {
-
-        console.log(
-            "❌ Not a file."
-        );
-
-        return;
-    }
-
-
-    const name =
-        path.basename(filePath);
-
-
-    const ext =
-        path.extname(name)
-            .toLowerCase();
-
-
-    let mime =
-        "application/octet-stream";
-
-
-    if (
-        [".jpg", ".jpeg"]
-            .includes(ext)
-    )
-        mime = "image/jpeg";
-
-    else if (
-        ext === ".png"
-    )
-        mime = "image/png";
-
-    else if (
-        ext === ".gif"
-    )
-        mime = "image/gif";
-
-    else if (
-        ext === ".webp"
-    )
-        mime = "image/webp";
-
-    else if (
-        ext === ".pdf"
-    )
-        mime = "application/pdf";
-
-    else if (
-        ext === ".mp4"
-    )
-        mime = "video/mp4";
-
-
-    const targets =
-        [...devices.keys()];
-
-
-    if (!targets.length) {
-
-        console.log(
-            "No devices connected."
-        );
-
-        return;
-    }
-
-
-    const transfer = {
-
-        id:
-            Math.random()
-                .toString(36)
-                .substring(
-                    2,
-                    12
-                ),
-
-        senderId:
-            "terminal",
-
-        senderName:
-            "MagicDrop Host",
-
-        kind:
-            mime.startsWith("image/")
-                ? "image"
-                : "file",
-
-        name,
-
-        size:
-            stat.size,
-
-        mime,
-
-        filePath,
-
-        accepted:
-            new Set(),
-
-        rejected:
-            new Set()
-
-    };
-
-
-    transfers.set(
-        transfer.id,
-        transfer
-    );
-
-
-    for (
-        const targetId
-        of targets
-    ) {
-
-        sendTransferRequest(
-            transfer,
-            targetId
-        );
-
-    }
-
-
-    console.log(
-        `📤 ${name} waiting for approval.`
-    );
-
-
-    // Terminal file sending is completed
-    // when the receiver approves it.
-}
-
-
-// ==============================
-// START
-// ==============================
+// ======================================================
+// ENTRY POINT
+// ======================================================
 
 const command =
     process.argv[2];
