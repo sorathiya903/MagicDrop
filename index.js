@@ -583,24 +583,25 @@ function acceptTerminalTransfer(
     ) {
 
         sendJSON(
-            sender.ws,
-            {
+    sender.ws,
+    {
+        type: "upload-approved",
 
-                type:
-                    "transfer-accepted",
+        transferId: transfer.id,
 
-                transferId:
-                    transfer.id,
+        localId: transfer.localId,
 
-                receiverId:
-                    "terminal",
+        name: transfer.name,
 
-                receiverName:
-                    "MagicDrop Host"
+        size: transfer.size,
 
-            }
-        );
+        mime: transfer.mime,
 
+        receiverId: "terminal",
+
+        receiverName: "MagicDrop Host"
+    }
+);
 
         console.log("");
         console.log(
@@ -771,27 +772,25 @@ function acceptTransfer(
         ) {
 
             sendJSON(
-                receiver.ws,
-                {
+    sender.ws,
+    {
+        type: "upload-approved",
 
-                    type:
-                        "text-received",
+        transferId: transfer.id,
 
-                    transferId:
-                        transfer.id,
-                    
-    localId: transfer.localId,
+        localId: transfer.localId,
 
+        name: transfer.name,
 
-                    senderName:
-                        transfer.senderName,
+        size: transfer.size,
 
-                    text:
-                        transfer.text
+        mime: transfer.mime,
 
-                }
-            );
+        receiverId: receiver.id,
 
+        receiverName: receiver.name
+    }
+);
             return;
 
         }
