@@ -74,8 +74,226 @@ socket.addEventListener(
 
         const data =
             JSON.parse(event.data);
+// =========================
+// TRANSFER REQUEST
+// =========================
+
+if (data.type === "transfer-request") {
+
+    const sender = devices.get(ws.deviceId);
+
+    if (!sender) return;
+
+    const transferId =
+        Math.random()
+            .toString(36)
+            .substring(2, 12);
+
+    const transfer = {
+        transferId,
+        senderId: sender.id,
+        senderName: sender.name,
+        kind: data.kind,
+        text: data.text || null,
+        name: data.name || null,
+        size: data.size || 0,
+        mime: data.mime || null
+    };
+
+    // Save temporarily
+    transfers.set(transferId, transfer);
+
+    let targets = [];
+
+    if (
+        data.targets &&
+        data.targets.includes("all")
+    ) {
+
+        targets = [
+            ...devices.values()
+        ].filter(
+            device =>
+                device.id !== sender.id
+        );
+
+    } else {
+
+        targets = [
+            ...data.targets || []
+        ]
+        .map(id => devices.get(id))
+        .filter(Boolean);
+
+    }
 
 
+    for (const receiver of targets) {
+
+        if (
+            receiver.ws.readyState ===
+            WebSocket.OPEN
+        ) {
+
+            receiver.ws.send(
+                JSON.stringify({
+
+                    type:
+                        "incoming-transfer",
+
+                    transferId,
+
+                    senderId:
+                        sender.id,
+
+                    senderName:
+                        sender.name,
+
+                    kind:
+                        transfer.kind,
+
+                    text:
+                        transfer.text,
+
+                    name:
+                        transfer.name,
+
+                    size:
+                        transfer.size,
+
+                    mime:
+                        transfer.mime
+
+                })
+            );
+
+        }
+
+    }
+
+                    }
+        // =========================
+// ACCEPT TRANSFER
+// =========================
+
+if (data.type === "accept-transfer") {
+
+    const receiver =
+        devices.get(ws.deviceId);
+
+    const transfer =
+        transfers.get(data.transferId);
+
+    if (!receiver || !transfer)
+        return;
+
+
+    const sender =
+        devices.get(
+            transfer.senderId
+        );
+
+
+    if (!sender)
+        return;
+
+
+    // TEXT
+    if (transfer.kind === "text") {
+
+        sender.ws.send(
+            JSON.stringify({
+
+                type:
+                    "text-received",
+
+                senderName:
+                    transfer.senderName,
+
+                receiverName:
+                    receiver.name,
+
+                text:
+                    transfer.text
+
+            })
+        );
+
+
+        receiver.ws.send(
+            JSON.stringify({
+
+                type:
+                    "text-received",
+
+                senderName:
+                    transfer.senderName,
+
+                receiverName:
+                    receiver.name,
+
+                text:
+                    transfer.text
+
+            })
+        );
+
+
+        sender.ws.send(
+            JSON.stringify({
+
+                type:
+                    "transfer-accepted",
+
+                receiverName:
+                    receiver.name
+
+            })
+        );
+
+    }
+
+}
+
+// =========================
+// REJECT TRANSFER
+// =========================
+
+if (data.type === "reject-transfer") {
+
+    const receiver =
+        devices.get(ws.deviceId);
+
+    const transfer =
+        transfers.get(data.transferId);
+
+    if (!receiver || !transfer)
+        return;
+
+
+    const sender =
+        devices.get(
+            transfer.senderId
+        );
+
+
+    if (!sender)
+        return;
+
+
+    sender.ws.send(
+        JSON.stringify({
+
+            type:
+                "transfer-rejected",
+
+            receiverName:
+                receiver.name
+
+        })
+    );
+
+                            }
         // JOINED
         if (data.type === "joined") {
 
