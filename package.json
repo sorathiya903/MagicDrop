@@ -1,0 +1,25 @@
+{
+  "name": "magicdrop",
+  "version": "0.0.1",
+  "description": "Instant local-network sharing for files, images and text.",
+  "main": "index.js",
+  "bin": {
+    "md": "index.js"
+  },
+  "scripts": {
+    "start": "node index.js"
+  },
+  "keywords": [
+    "file-sharing",
+    "wifi",
+    "local-network",
+    "p2p",
+    "developer-tools"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "express": "^5.1.0",
+    "ws": "^8.18.3",
+    "qrcode": "^1.5.4"
+  }
+}
