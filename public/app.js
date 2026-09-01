@@ -6,7 +6,10 @@ const socket =
 
 let myId = null;
 let myName = null;
-
+let incomingBuffers = [];
+let incomingTransfer = null;
+const pendingUploads = new Map();
+const pendingFiles =  new Map();
 let selectedDevices = new Set();
 
 let currentIncoming = null;
@@ -773,6 +776,10 @@ if (data.type === "reject-transfer") {
                 }`
 
             );
+            uploadFile(
+    data.transferId,
+    data.localId
+);
 
             // File upload will be
             // added in next step.
