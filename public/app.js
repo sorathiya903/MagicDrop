@@ -1,19 +1,26 @@
-const socket =
-    new WebSocket(
-        `ws://${location.host}`
-    );
+const socket = new WebSocket(`ws://${location.host}`);
 
-let activeIncomingFile = null;
+// ======================================================
+// STATE
+// ======================================================
+
 let myId = null;
 let myName = null;
-let incomingBuffers = [];
-let incomingTransfer = null;
-const pendingUploads = new Map();
-const pendingFiles =  new Map();
-let selectedDevices = new Set();
+
+const pendingFiles = new Map();
+// localId -> File
+
+const incomingFiles = new Map();
+// transferId -> incoming file state
 
 let currentIncoming = null;
 
+const selectedDevices = new Set();
+
+
+// ======================================================
+// DOM
+// ======================================================
 
 const joinScreen =
     document.getElementById("joinScreen");
@@ -37,9 +44,35 @@ const transfers =
     document.getElementById("transfers");
 
 
-// =========================
+// ======================================================
+// CONNECTION
+// ======================================================
+
+socket.addEventListener("open", () => {
+
+    console.log("🔌 Connected to MagicDrop server.");
+
+});
+
+socket.addEventListener("close", () => {
+
+    console.log("🔌 Disconnected from MagicDrop server.");
+
+});
+
+socket.addEventListener("error", error => {
+
+    console.error(
+        "❌ WebSocket error:",
+        error
+    );
+
+});
+
+
+// ======================================================
 // JOIN
-// =========================
+// ======================================================
 
 document
     .getElementById("joinBtn")
@@ -47,486 +80,803 @@ document
         "click",
         join
     );
-function getFileIcon(name, mime) {
-
-    const ext =
-        name
-            .split(".")
-            .pop()
-            .toLowerCase();
 
 
-    if (mime === "application/pdf")
-        return "📕";
-
-    if (mime && mime.startsWith("video/"))
-        return "🎬";
-
-    if (mime && mime.startsWith("audio/"))
-        return "🎵";
+function join() {
 
     if (
-        [
-            "zip",
-            "rar",
-            "7z",
-            "tar",
-            "gz"
-        ].includes(ext)
-    )
-        return "📦";
-
-    if (
-        [
-            "doc",
-            "docx"
-        ].includes(ext)
-    )
-        return "📘";
-
-    if (
-        [
-            "xls",
-            "xlsx",
-            "csv"
-        ].includes(ext)
-    )
-        return "📊";
-
-    if (
-        [
-            "ppt",
-            "pptx"
-        ].includes(ext)
-    )
-        return "📙";
-
-    if (
-        [
-            "txt",
-            "md"
-        ].includes(ext)
-    )
-        return "📄";
-
-    if (
-        [
-            "js",
-            "html",
-            "css",
-            "py",
-            "json"
-        ].includes(ext)
-    )
-        return "💻";
-
-
-    return "📎";
-
-}
-function finishIncomingFile(data) {
-
-    if (!activeIncomingFile)
-        return;
-
-
-    const file =
-        activeIncomingFile;
-
-
-    const blob =
-        new Blob(
-            file.chunks,
-            {
-                type:
-                    file.mime ||
-                    "application/octet-stream"
-            }
-        );
-
-
-    const url =
-        URL.createObjectURL(blob);
-
-
-    // =========================
-    // TRANSFER CARD
-    // =========================
-
-    const item =
-        document.createElement("div");
-
-    item.className =
-        "transfer";
-
-
-    // Image thumbnail
-    if (
-        file.mime &&
-        file.mime.startsWith("image/")
+        socket.readyState !==
+        WebSocket.OPEN
     ) {
 
-        item.innerHTML = `
-
-            <div class="received-file">
-
-                <img
-                    src="${url}"
-                    class="received-thumbnail"
-                    alt="${escapeHTML(file.name)}"
-                >
-
-                <div>
-
-                    <strong>
-                        ${escapeHTML(file.name)}
-                    </strong>
-
-                    <small>
-                        ${formatBytes(file.size)}
-                    </small>
-
-                    <a
-                        href="${url}"
-                        download="${escapeHTML(file.name)}"
-                        class="download-btn"
-                    >
-                        ⬇️ Download
-                    </a>
-
-                </div>
-
-            </div>
-
-        `;
-
-    }
-
-    // Other files
-    else {
-
-        const icon =
-            getFileIcon(
-                file.name,
-                file.mime
-            );
-
-
-        item.innerHTML = `
-
-            <div class="received-file">
-
-                <div class="file-icon">
-                    ${icon}
-                </div>
-
-                <div>
-
-                    <strong>
-                        ${escapeHTML(file.name)}
-                    </strong>
-
-                    <small>
-                        ${formatBytes(file.size)}
-                    </small>
-
-                    <a
-                        href="${url}"
-                        download="${escapeHTML(file.name)}"
-                        class="download-btn"
-                    >
-                        ⬇️ Download
-                    </a>
-
-                </div>
-
-            </div>
-
-        `;
-
-    }
-
-
-    transfers.prepend(item);
-
-
-    console.log(
-        `✅ Received ${file.name}`
-    );
-
-
-    // Release old chunks
-    activeIncomingFile =
-        null;
-
-}
-async function handleIncomingBinary(data) {
-
-    if (!activeIncomingFile) {
-        console.warn(
-            "Received file data but no active transfer."
-        );
-        return;
-    }
-
-
-    // Convert incoming WebSocket data to Blob
-    let chunk;
-
-    if (data instanceof Blob) {
-
-        chunk = data;
-
-    } else if (data instanceof ArrayBuffer) {
-
-        chunk = new Blob([data]);
-
-    } else {
-
-        console.warn(
-            "Unknown binary data received."
+        alert(
+            "Not connected to the server."
         );
 
         return;
-    }
-
-
-    // Store chunk
-    activeIncomingFile.chunks.push(chunk);
-
-    activeIncomingFile.received +=
-        chunk.size;
-
-
-    // Update progress if available
-    const progress =
-        document.getElementById(
-            "transferProgress"
-        );
-
-    if (progress) {
-
-        const percent =
-            activeIncomingFile.size
-                ? Math.min(
-                    100,
-                    (
-                        activeIncomingFile.received /
-                        activeIncomingFile.size
-                    ) * 100
-                )
-                : 0;
-
-        progress.textContent =
-            `${Math.round(percent)}%`;
 
     }
 
-
-    // Optional log
-    console.log(
-        `📥 Receiving ${
-            activeIncomingFile.name
-        }: ${
-            formatBytes(
-                activeIncomingFile.received
-            )
-        } / ${
-            formatBytes(
-                activeIncomingFile.size
-            )
-        }`
-    );
-
-}
-function join() {
 
     const name =
         deviceName.value.trim() ||
         "Unknown";
 
 
-    socket.send(JSON.stringify({
+    socket.send(
+        JSON.stringify({
 
-        type: "join",
+            type: "join",
 
-        name
+            name
 
-    }));
-
-}
-
-function receiveFileChunk(blob) {
-
-    if (!incomingTransfer)
-        return;
-
-    incomingBuffers.push(blob);
+        })
+    );
 
 }
-function finishIncomingFile(data) {
-
-    if (!incomingTransfer)
-        return;
 
 
-    const blob =
-        new Blob(
-            incomingBuffers,
-            {
-                type:
-                    data.mime ||
-                    "application/octet-stream"
+// ======================================================
+// RECEIVE SERVER MESSAGES
+// ======================================================
+
+socket.addEventListener(
+    "message",
+    async event => {
+
+        // ==================================================
+        // BINARY
+        // ==================================================
+
+        if (
+            event.data instanceof Blob
+        ) {
+
+            await handleIncomingBinary(
+                event.data
+            );
+
+            return;
+
+        }
+
+
+        // ==================================================
+        // JSON
+        // ==================================================
+
+        let data;
+
+        try {
+
+            data =
+                JSON.parse(
+                    event.data
+                );
+
+        } catch (error) {
+
+            console.error(
+                "Invalid server message:",
+                error
+            );
+
+            return;
+
+        }
+
+
+        console.log(
+            "📨 Server:",
+            data.type,
+            data
+        );
+
+
+        // ==================================================
+        // JOINED
+        // ==================================================
+
+        if (
+            data.type === "joined"
+        ) {
+
+            myId =
+                data.id;
+
+            myName =
+                data.name;
+
+
+            joinScreen.hidden =
+                true;
+
+            appScreen.hidden =
+                false;
+
+
+            const myNameElement =
+                document.getElementById(
+                    "myName"
+                );
+
+
+            if (myNameElement) {
+
+                myNameElement.textContent =
+                    myName;
+
+            }
+
+
+            return;
+
+        }
+
+
+        // ==================================================
+        // DEVICES
+        // ==================================================
+
+        if (
+            data.type === "devices"
+        ) {
+
+            showDevices(
+                data.devices || []
+            );
+
+            return;
+
+        }
+
+
+        // ==================================================
+        // INCOMING TRANSFER
+        // ==================================================
+
+        if (
+            data.type ===
+            "incoming-transfer"
+        ) {
+
+            showIncoming(
+                data
+            );
+
+            return;
+
+        }
+
+
+        // ==================================================
+        // TRANSFER ACCEPTED
+        // ==================================================
+
+        if (
+            data.type ===
+            "transfer-accepted"
+        ) {
+
+            addTransfer(
+                `✅ Accepted by ${
+                    escapeHTML(
+                        data.receiverName ||
+                        "receiver"
+                    )
+                }`
+            );
+
+            return;
+
+        }
+
+
+        // ==================================================
+        // TRANSFER REJECTED
+        // ==================================================
+
+        if (
+            data.type ===
+            "transfer-rejected"
+        ) {
+
+            addTransfer(
+                `❌ Rejected by ${
+                    escapeHTML(
+                        data.receiverName ||
+                        "receiver"
+                    )
+                }`
+            );
+
+            return;
+
+        }
+
+
+        // ==================================================
+        // TEXT RECEIVED
+        // ==================================================
+
+        if (
+            data.type ===
+            "text-received"
+        ) {
+
+            addTransfer(`
+
+                💬 Text from
+                <strong>
+                    ${escapeHTML(
+                        data.senderName ||
+                        "Unknown"
+                    )}
+                </strong>
+
+                <div class="received-text">
+                    ${escapeHTML(
+                        data.text || ""
+                    )}
+                </div>
+
+            `);
+
+            return;
+
+        }
+
+
+        // ==================================================
+        // UPLOAD APPROVED
+        // ==================================================
+
+        if (
+            data.type ===
+            "upload-approved"
+        ) {
+
+            console.log(
+                "🚀 Upload approved:",
+                {
+                    transferId:
+                        data.transferId,
+
+                    localId:
+                        data.localId,
+
+                    name:
+                        data.name
+                }
+            );
+
+
+            addTransfer(
+
+                `📤 ${
+                    escapeHTML(
+                        data.name ||
+                        "File"
+                    )
+                } approved by ${
+                    escapeHTML(
+                        data.receiverName ||
+                        "receiver"
+                    )
+                }`
+
+            );
+
+
+            await uploadFile(
+                data.transferId,
+                data.localId
+            );
+
+
+            return;
+
+        }
+
+
+        // ==================================================
+        // FILE START
+        // ==================================================
+
+        if (
+            data.type ===
+            "file-start"
+        ) {
+
+            startIncomingFile(
+                data
+            );
+
+            return;
+
+        }
+
+
+        // ==================================================
+        // FILE COMPLETE
+        // ==================================================
+
+        if (
+            data.type ===
+            "file-complete"
+        ) {
+
+            finishIncomingFile(
+                data
+            );
+
+            return;
+
+        }
+
+
+        // ==================================================
+        // UPLOAD COMPLETE
+        // ==================================================
+
+        if (
+            data.type ===
+            "upload-complete"
+        ) {
+
+            addTransfer(
+                `✅ Upload complete`
+            );
+
+            return;
+
+        }
+
+
+        // ==================================================
+        // ERROR
+        // ==================================================
+
+        if (
+            data.type ===
+            "error"
+        ) {
+
+            console.error(
+                "Server error:",
+                data.message
+            );
+
+            addTransfer(
+                `❌ ${escapeHTML(
+                    data.message ||
+                    "Server error"
+                )}`
+            );
+
+            return;
+
+        }
+
+    }
+);
+
+
+// ======================================================
+// DEVICES
+// ======================================================
+
+function showDevices(devices) {
+
+    devicesContainer.innerHTML = "";
+
+    selectedDevices.clear();
+
+
+    // ==================================================
+    // DEVICES
+    // ==================================================
+
+    devices
+        .filter(
+            device =>
+                device.id !== myId
+        )
+        .forEach(
+            device => {
+
+                const button =
+                    document.createElement(
+                        "button"
+                    );
+
+
+                button.textContent =
+                    `📱 ${device.name}`;
+
+
+                button.onclick = () => {
+
+                    selectedDevices.delete(
+                        "all"
+                    );
+
+
+                    if (
+                        selectedDevices.has(
+                            device.id
+                        )
+                    ) {
+
+                        selectedDevices.delete(
+                            device.id
+                        );
+
+                        button.classList.remove(
+                            "selected"
+                        );
+
+                    } else {
+
+                        selectedDevices.add(
+                            device.id
+                        );
+
+                        button.classList.add(
+                            "selected"
+                        );
+
+                    }
+
+
+                    const everyone =
+                        document.getElementById(
+                            "everyoneBtn"
+                        );
+
+
+                    if (everyone) {
+
+                        everyone.classList.remove(
+                            "selected"
+                        );
+
+                    }
+
+
+                    console.log(
+                        "Selected:",
+                        [
+                            ...selectedDevices
+                        ]
+                    );
+
+                };
+
+
+                devicesContainer.appendChild(
+                    button
+                );
+
             }
         );
 
 
-    const url =
-        URL.createObjectURL(blob);
+    // ==================================================
+    // EVERYONE
+    // ==================================================
+
+    const all =
+        document.createElement(
+            "button"
+        );
 
 
-    const item =
-        document.createElement("div");
-
-    item.className =
-        "received-file";
+    all.id =
+        "everyoneBtn";
 
 
-    let preview = "";
+    all.textContent =
+        "🚀 Everyone";
 
 
-    // IMAGE
+    all.onclick = () => {
+
+        selectedDevices.clear();
+
+        selectedDevices.add(
+            "all"
+        );
+
+
+        devicesContainer
+            .querySelectorAll(
+                "button"
+            )
+            .forEach(
+                button => {
+
+                    button.classList.remove(
+                        "selected"
+                    );
+
+                }
+            );
+
+
+        all.classList.add(
+            "selected"
+        );
+
+
+        console.log(
+            "Selected: Everyone"
+        );
+
+    };
+
+
+    devicesContainer.appendChild(
+        all
+    );
+
+}
+
+
+// ======================================================
+// TARGETS
+// ======================================================
+
+function getTargets() {
+
     if (
-        data.mime &&
-        data.mime.startsWith("image/")
-    ) {
-
-        preview = `
-
-            <img
-                src="${url}"
-                class="file-thumbnail"
-                alt="${escapeHTML(data.name)}"
-            >
-
-        `;
-
-    }
-
-    // PDF
-    else if (
-        data.mime ===
-        "application/pdf"
-    ) {
-
-        preview = `
-            <div class="file-icon">
-                📄
-            </div>
-        `;
-
-    }
-
-    // VIDEO
-    else if (
-        data.mime &&
-        data.mime.startsWith("video/")
-    ) {
-
-        preview = `
-            <div class="file-icon">
-                🎬
-            </div>
-        `;
-
-    }
-
-    // AUDIO
-    else if (
-        data.mime &&
-        data.mime.startsWith("audio/")
-    ) {
-
-        preview = `
-            <div class="file-icon">
-                🎵
-            </div>
-        `;
-
-    }
-
-    // ZIP
-    else if (
-        data.name &&
-        (
-            data.name.endsWith(".zip") ||
-            data.name.endsWith(".rar") ||
-            data.name.endsWith(".7z")
+        selectedDevices.has(
+            "all"
         )
     ) {
 
-        preview = `
-            <div class="file-icon">
-                📦
-            </div>
-        `;
-
-    }
-
-    // OTHER
-    else {
-
-        preview = `
-            <div class="file-icon">
-                📁
-            </div>
-        `;
+        return [
+            "all"
+        ];
 
     }
 
 
-    item.innerHTML = `
+    return [
+        ...selectedDevices
+    ];
 
-        ${preview}
-
-        <div class="file-details">
-
-            <strong>
-                ${escapeHTML(data.name)}
-            </strong>
-
-            <small>
-                ${formatBytes(data.size)}
-            </small>
-
-            <a
-                class="download-btn"
-                href="${url}"
-                download="${escapeHTML(data.name)}"
-            >
-                ⬇ Download
-            </a>
-
-        </div>
-
-    `;
+}
 
 
-    transfers.prepend(item);
+// ======================================================
+// SEND TEXT
+// ======================================================
+
+document
+    .getElementById("sendText")
+    .addEventListener(
+        "click",
+        sendText
+    );
 
 
-    incomingBuffers = [];
+function sendText() {
 
-    incomingTransfer = null;
+    const text =
+        textInput.value;
 
-                            }
-// =========================
-// RECEIVE SERVER MESSAGE
-// =========================
+
+    if (
+        !text.trim()
+    ) {
+
+        alert(
+            "Write something first."
+        );
+
+        return;
+
+    }
+
+
+    const targets =
+        getTargets();
+
+
+    if (
+        !targets.length
+    ) {
+
+        alert(
+            "Select a device first."
+        );
+
+        return;
+
+    }
+
+
+    socket.send(
+        JSON.stringify({
+
+            type:
+                "transfer-request",
+
+            targets,
+
+            kind:
+                "text",
+
+            text,
+
+            size:
+                new Blob([
+                    text
+                ]).size
+
+        })
+    );
+
+
+    addTransfer(
+        "📤 Text sent for approval"
+    );
+
+
+    textInput.value =
+        "";
+
+}
+
+
+// ======================================================
+// SEND FILE
+// ======================================================
+
+document
+    .getElementById("sendFile")
+    .addEventListener(
+        "click",
+        sendFiles
+    );
+
+
+function sendFiles() {
+
+    const files =
+        [
+            ...fileInput.files
+        ];
+
+
+    if (
+        !files.length
+    ) {
+
+        alert(
+            "Select a file first."
+        );
+
+        return;
+
+    }
+
+
+    const targets =
+        getTargets();
+
+
+    if (
+        !targets.length
+    ) {
+
+        alert(
+            "Select a device first."
+        );
+
+        return;
+
+    }
+
+
+    files.forEach(
+        file => {
+
+            // ==========================================
+            // IMPORTANT
+            // ==========================================
+
+            const localId =
+                Math.random()
+                    .toString(36)
+                    .substring(
+                        2,
+                        10
+                    );
+
+
+            // Keep the actual File object.
+            pendingFiles.set(
+                localId,
+                file
+            );
+
+
+            console.log(
+                "📦 File stored:",
+                {
+                    localId,
+                    name:
+                        file.name,
+                    size:
+                        file.size
+                }
+            );
+
+
+            socket.send(
+                JSON.stringify({
+
+                    type:
+                        "transfer-request",
+
+                    localId,
+
+                    targets,
+
+                    kind:
+                        file.type.startsWith(
+                            "image/"
+                        )
+                            ? "image"
+                            : "file",
+
+                    name:
+                        file.name,
+
+                    size:
+                        file.size,
+
+                    mime:
+                        file.type ||
+                        "application/octet-stream"
+
+                })
+            );
+
+        }
+    );
+
+
+    addTransfer(
+        `📤 ${files.length} file(s) sent for approval`
+    );
+
+
+    fileInput.value =
+        "";
+
+}
+
+
+// ======================================================
+// UPLOAD FILE
+// ======================================================
+
 async function uploadFile(
     transferId,
     localId
 ) {
+
+    console.log(
+        "🚀 uploadFile() called:",
+        {
+            transferId,
+            localId
+        }
+    );
+
 
     const file =
         pendingFiles.get(
@@ -534,8 +884,33 @@ async function uploadFile(
         );
 
 
-    if (!file)
+    if (!file) {
+
+        console.error(
+            "❌ File not found in pendingFiles:",
+            {
+                localId,
+
+                available:
+                    [
+                        ...pendingFiles.keys()
+                    ]
+            }
+        );
+
+
+        addTransfer(
+            "❌ Could not find the selected file."
+        );
+
         return;
+
+    }
+
+
+    console.log(
+        `📤 Starting upload: ${file.name} (${file.size} bytes)`
+    );
 
 
     socket.send(
@@ -571,18 +946,46 @@ async function uploadFile(
             await chunk.arrayBuffer();
 
 
+        // Wait if WebSocket buffer gets large.
+        while (
+            socket.bufferedAmount >
+            2 * 1024 * 1024
+        ) {
+
+            await new Promise(
+                resolve =>
+                    setTimeout(
+                        resolve,
+                        10
+                    )
+            );
+
+        }
+
+
         socket.send(
             buffer
         );
 
 
-        // Don't flood the WebSocket.
-        await new Promise(
-            resolve =>
-                setTimeout(
-                    resolve,
-                    0
-                )
+        const progress =
+            Math.min(
+                100,
+                (
+                    (
+                        offset +
+                        buffer.byteLength
+                    ) /
+                    file.size
+                ) *
+                100
+            );
+
+
+        console.log(
+            `📤 ${file.name}: ${Math.round(
+                progress
+            )}%`
         );
 
     }
@@ -600,749 +1003,21 @@ async function uploadFile(
     );
 
 
+    console.log(
+        `✅ Upload sent: ${file.name}`
+    );
+
+
     pendingFiles.delete(
         localId
     );
 
-        }
-
-function sendFiles() {
-
-    const files = [...fileInput.files];
-
-    if (!files.length) {
-        alert("Select a file first.");
-        return;
-    }
-
-    const targets = getTargets();
-
-    if (!targets.length) {
-        alert("Select a device first.");
-        return;
-    }
-
-    files.forEach(file => {
-
-        const localId =
-            Math.random()
-                .toString(36)
-                .substring(2, 10);
-
-        pendingFiles.set(
-            localId,
-            file
-        );
-
-        socket.send(JSON.stringify({
-
-            type: "transfer-request",
-
-            localId,
-
-            targets,
-
-            kind: file.type.startsWith("image/")
-                ? "image"
-                : "file",
-
-            name: file.name,
-
-            size: file.size,
-
-            mime: file.type
-
-        }));
-
-    });
-
-    fileInput.value = "";
-}
-socket.addEventListener(
-    "message",
-    event => {
-
-        // Binary file chunk
-        if (event.data instanceof Blob) {
-
-            receiveFileChunk(event.data);
-
-            return;
-        }
-
-
-        const data =
-            JSON.parse(event.data);
-        if (data.type === "transfer-created") {
-
-    const file =
-        [...fileInput.files]
-            .find(
-                f =>
-                    f.name === data.name
-            );
-
-    if (file) {
-
-        pendingUploads.set(
-            data.transferId,
-            file
-        );
-
-    }
-
-        }
-
-if (data.type === "transfer-request") {
-
-    const sender = devices.get(ws.deviceId);
-
-    if (!sender) return;
-
-    const transferId =
-        Math.random()
-            .toString(36)
-            .substring(2, 12);
-
-    const transfer = {
-        transferId,
-        senderId: sender.id,
-        senderName: sender.name,
-        kind: data.kind,
-        text: data.text || null,
-        name: data.name || null,
-        size: data.size || 0,
-        mime: data.mime || null
-    };
-
-    // Save temporarily
-    transfers.set(transferId, transfer);
-
-    let targets = [];
-
-    if (
-        data.targets &&
-        data.targets.includes("all")
-    ) {
-
-        targets = [
-            ...devices.values()
-        ].filter(
-            device =>
-                device.id !== sender.id
-        );
-
-    } else {
-
-        targets = [
-            ...data.targets || []
-        ]
-        .map(id => devices.get(id))
-        .filter(Boolean);
-
-    }
-
-
-    for (const receiver of targets) {
-
-        if (
-            receiver.ws.readyState ===
-            WebSocket.OPEN
-        ) {
-
-            receiver.ws.send(
-                JSON.stringify({
-
-                    type:
-                        "incoming-transfer",
-
-                    transferId,
-
-                    senderId:
-                        sender.id,
-
-                    senderName:
-                        sender.name,
-
-                    kind:
-                        transfer.kind,
-
-                    text:
-                        transfer.text,
-
-                    name:
-                        transfer.name,
-
-                    size:
-                        transfer.size,
-
-                    mime:
-                        transfer.mime
-
-                })
-            );
-
-        }
-
-    }
-
-                    }
-
-        if (data.type === "upload-start") {
-
-    incomingTransfer = data;
-    incomingBuffers = [];
-
-    addTransfer(
-        `📥 Receiving <strong>${escapeHTML(
-            data.name
-        )}</strong>...`
-    );
-
-        }
-
-        if (
-    data.type === "file-complete"
-) {
-
-    finishIncomingFile(data);
-
-}
-        // =========================
-// ACCEPT TRANSFER
-// =========================
-
-if (data.type === "accept-transfer") {
-
-    const receiver =
-        devices.get(ws.deviceId);
-
-    const transfer =
-        transfers.get(data.transferId);
-
-    if (!receiver || !transfer)
-        return;
-
-
-    const sender =
-        devices.get(
-            transfer.senderId
-        );
-
-
-    if (!sender)
-        return;
-
-
-    // TEXT
-    if (transfer.kind === "text") {
-
-        sender.ws.send(
-            JSON.stringify({
-
-                type:
-                    "text-received",
-
-                senderName:
-                    transfer.senderName,
-
-                receiverName:
-                    receiver.name,
-
-                text:
-                    transfer.text
-
-            })
-        );
-
-
-        receiver.ws.send(
-            JSON.stringify({
-
-                type:
-                    "text-received",
-
-                senderName:
-                    transfer.senderName,
-
-                receiverName:
-                    receiver.name,
-
-                text:
-                    transfer.text
-
-            })
-        );
-
-
-        sender.ws.send(
-            JSON.stringify({
-
-                type:
-                    "transfer-accepted",
-
-                receiverName:
-                    receiver.name
-
-            })
-        );
-
-    }
-
-}
-
-// =========================
-// REJECT TRANSFER
-// =========================
-
-if (data.type === "reject-transfer") {
-
-    const receiver =
-        devices.get(ws.deviceId);
-
-    const transfer =
-        transfers.get(data.transferId);
-
-    if (!receiver || !transfer)
-        return;
-
-
-    const sender =
-        devices.get(
-            transfer.senderId
-        );
-
-
-    if (!sender)
-        return;
-
-
-    sender.ws.send(
-        JSON.stringify({
-
-            type:
-                "transfer-rejected",
-
-            receiverName:
-                receiver.name
-
-        })
-    );
-
-                            }
-        // JOINED
-        if (data.type === "joined") {
-
-            myId = data.id;
-
-            myName = data.name;
-
-
-            joinScreen.hidden = true;
-
-            appScreen.hidden = false;
-
-
-            document
-                .getElementById("myName")
-                .textContent =
-                    myName;
-
-        }
-
-
-        // DEVICES
-        if (data.type === "devices") {
-
-            showDevices(
-                data.devices
-            );
-
-        }
-
-
-        // INCOMING
-        if (
-            data.type ===
-            "incoming-transfer"
-        ) {
-
-            showIncoming(data);
-
-        }
-
-
-        // ACCEPTED
-        if (
-            data.type ===
-            "transfer-accepted"
-        ) {
-
-            addTransfer(
-
-                `✅ Accepted by ${
-                    data.receiverName
-                }`
-
-            );
-
-        }
-
-
-        // REJECTED
-        if (
-            data.type ===
-            "transfer-rejected"
-        ) {
-
-            addTransfer(
-
-                `❌ Rejected by ${
-                    data.receiverName
-                }`
-
-            );
-
-        }
-
-
-        // TEXT RECEIVED
-        if (
-            data.type ===
-            "text-received"
-        ) {
-
-            addTransfer(`
-
-                💬 Text from
-                <strong>
-                    ${escapeHTML(
-                        data.senderName
-                    )}
-                </strong>
-
-                <div class="received-text">
-                    ${escapeHTML(
-                        data.text
-                    )}
-                </div>
-
-            `);
-
-        }
-
-
-        // FILE UPLOAD APPROVED
-        if (
-            data.type ===
-            "upload-approved"
-        ) {
-
-            addTransfer(
-
-                `📤 ${
-                    data.name ||
-                    "File"
-                } approved by ${
-                    data.receiverName
-                }`
-
-            );
-            uploadFile(
-    data.transferId,
-    data.localId
-);
-
-            // File upload will be
-            // added in next step.
-
-        }
-
-    }
-);
-
-
-// =========================
-// DEVICES
-// =========================
-
-function showDevices(devices) {
-
-    devicesContainer.innerHTML = "";
-
-    selectedDevices.clear();
-
-    // =========================
-    // DEVICE BUTTONS
-    // =========================
-
-    devices
-        .filter(device => device.id !== myId)
-        .forEach(device => {
-
-            const button =
-                document.createElement("button");
-
-            button.textContent =
-                `📱 ${device.name}`;
-
-            button.onclick = () => {
-
-                // If Everyone was selected,
-                // remove it first.
-                selectedDevices.delete("all");
-
-                // Toggle this device
-                if (
-                    selectedDevices.has(device.id)
-                ) {
-
-                    selectedDevices.delete(
-                        device.id
-                    );
-
-                    button.classList.remove(
-                        "selected"
-                    );
-
-                } else {
-
-                    selectedDevices.add(
-                        device.id
-                    );
-
-                    button.classList.add(
-                        "selected"
-                    );
-                }
-
-                // Remove Everyone selected state
-                const everyone =
-                    document.getElementById(
-                        "everyoneBtn"
-                    );
-
-                if (everyone) {
-                    everyone.classList.remove(
-                        "selected"
-                    );
-                }
-
-                console.log(
-                    "Selected:",
-                    [...selectedDevices]
-                );
-            };
-
-            devicesContainer.appendChild(button);
-
-        });
-
-
-    // =========================
-    // EVERYONE
-    // =========================
-
-    const all =
-        document.createElement("button");
-
-    all.id = "everyoneBtn";
-
-    all.textContent =
-        "🚀 Everyone";
-
-    all.onclick = () => {
-
-        selectedDevices.clear();
-
-        selectedDevices.add("all");
-
-        // Remove selected state from devices
-        devicesContainer
-            .querySelectorAll("button")
-            .forEach(btn => {
-                btn.classList.remove("selected");
-            });
-
-        all.classList.add("selected");
-
-        console.log(
-            "Selected: Everyone"
-        );
-    };
-
-    devicesContainer.appendChild(all);
-}
-
-// =========================
-// GET TARGETS
-// =========================
-
-function getTargets() {
-    if (selectedDevices.has("all")) {
-        return ["all"];
-    }
-
-    return [...selectedDevices];
-}
-
-// =========================
-// SEND TEXT
-// =========================
-
-document
-    .getElementById("sendText")
-    .addEventListener(
-        "click",
-        sendText
-    );
-
-
-function sendText() {
-
-    const text =
-        textInput.value;
-
-
-    if (!text.trim()) {
-
-        alert(
-            "Write something first."
-        );
-
-        return;
-    }
-
-
-    const targets =
-        getTargets();
-
-
-    if (!targets.length) {
-
-        alert(
-            "Select a device first."
-        );
-
-        return;
-    }
-
-
-    socket.send(JSON.stringify({
-
-        type:
-            "transfer-request",
-
-        targets,
-
-        kind:
-            "text",
-
-        text,
-
-        size:
-            new Blob([text]).size
-
-    }));
-
-
-    addTransfer(
-        "📤 Text sent for approval"
-    );
-
-
-    textInput.value = "";
-
 }
 
 
-// =========================
-// SEND FILE
-// =========================
-
-document
-    .getElementById("sendFile")
-    .addEventListener(
-        "click",
-        sendFiles
-    );
-
-
-function sendFiles() {
-
-    const files =
-        [...fileInput.files];
-
-
-    if (!files.length) {
-
-        alert(
-            "Select a file first."
-        );
-
-        return;
-    }
-
-
-    const targets =
-        getTargets();
-
-
-    if (!targets.length) {
-
-        alert(
-            "Select a device first."
-        );
-
-        return;
-    }
-
-
-    files.forEach(file => {
-
-        socket.send(
-            JSON.stringify({
-
-                type:
-                    "transfer-request",
-
-                targets,
-
-                kind:
-                    file.type.startsWith(
-                        "image/"
-                    )
-                        ? "image"
-                        : "file",
-
-                name:
-                    file.name,
-
-                size:
-                    file.size,
-
-                mime:
-                    file.type
-
-            })
-        );
-
-    });
-
-
-    addTransfer(
-        `📤 ${files.length} file(s) sent for approval`
-    );
-
-
-    fileInput.value = "";
-
-}
-
-
-// =========================
-// INCOMING
-// =========================
+// ======================================================
+// INCOMING TRANSFER MODAL
+// ======================================================
 
 function showIncoming(data) {
 
@@ -1350,12 +1025,19 @@ function showIncoming(data) {
         data;
 
 
-    document
-        .getElementById(
+    const sender =
+        document.getElementById(
             "incomingSender"
-        )
-        .textContent =
-            data.senderName;
+        );
+
+
+    if (sender) {
+
+        sender.textContent =
+            data.senderName ||
+            "Unknown";
+
+    }
 
 
     const preview =
@@ -1364,22 +1046,26 @@ function showIncoming(data) {
         );
 
 
-    if (data.kind === "text") {
+    if (!preview)
+        return;
+
+
+    if (
+        data.kind === "text"
+    ) {
 
         preview.innerHTML = `
 
             <div class="incoming-text">
 
                 ${formatTextPreview(
-                    data.text
+                    data.text || ""
                 )}
 
             </div>
 
             <small>
-                ${
-                    data.size
-                } bytes
+                ${data.size || 0} bytes
             </small>
 
         `;
@@ -1393,12 +1079,16 @@ function showIncoming(data) {
         preview.innerHTML = `
 
             <div>
+
                 🖼️
+
                 <strong>
                     ${escapeHTML(
-                        data.name
+                        data.name ||
+                        "Image"
                     )}
                 </strong>
+
             </div>
 
             <small>
@@ -1416,12 +1106,19 @@ function showIncoming(data) {
         preview.innerHTML = `
 
             <div>
-                📦
+
+                ${getFileIcon(
+                    data.name,
+                    data.mime
+                )}
+
                 <strong>
                     ${escapeHTML(
-                        data.name
+                        data.name ||
+                        "File"
                     )}
                 </strong>
+
             </div>
 
             <small>
@@ -1439,51 +1136,30 @@ function showIncoming(data) {
         .getElementById(
             "incomingModal"
         )
-        .hidden = false;
+        .hidden =
+            false;
 
 }
 
 
-// =========================
-// ACCEPT
-// =========================
+// ======================================================
+// ACCEPT INCOMING
+// ======================================================
+
 document
     .getElementById("acceptBtn")
     .addEventListener(
         "click",
         () => {
 
-            if (!currentIncoming)
+            if (
+                !currentIncoming
+            )
                 return;
 
 
-            // Start collecting binary data
-            if (
-                currentIncoming.kind === "image" ||
-                currentIncoming.kind === "file"
-            ) {
-
-                activeIncomingFile = {
-
-                    transferId:
-                        currentIncoming.transferId,
-
-                    name:
-                        currentIncoming.name,
-
-                    size:
-                        currentIncoming.size,
-
-                    mime:
-                        currentIncoming.mime,
-
-                    chunks: [],
-
-                    received: 0
-
-                };
-
-            }
+            const transfer =
+                currentIncoming;
 
 
             socket.send(
@@ -1493,7 +1169,7 @@ document
                         "accept-transfer",
 
                     transferId:
-                        currentIncoming.transferId
+                        transfer.transferId
 
                 })
             );
@@ -1509,9 +1185,10 @@ document
         }
     );
 
-// =========================
-// REJECT
-// =========================
+
+// ======================================================
+// REJECT INCOMING
+// ======================================================
 
 document
     .getElementById("rejectBtn")
@@ -1519,7 +1196,9 @@ document
         "click",
         () => {
 
-            if (!currentIncoming)
+            if (
+                !currentIncoming
+            )
                 return;
 
 
@@ -1548,29 +1227,439 @@ document
     );
 
 
-// =========================
-// CLOSE
-// =========================
+// ======================================================
+// CLOSE MODAL
+// ======================================================
 
 function closeIncoming() {
 
-    currentIncoming = null;
+    currentIncoming =
+        null;
 
 
-    document
-        .getElementById(
+    const modal =
+        document.getElementById(
             "incomingModal"
-        )
-        .hidden = true;
+        );
+
+
+    if (modal) {
+
+        modal.hidden =
+            true;
+
+    }
 
 }
 
 
-// =========================
-// TRANSFER LOG
-// =========================
+// ======================================================
+// START INCOMING FILE
+// ======================================================
 
-function addTransfer(html) {
+function startIncomingFile(data) {
+
+    console.log(
+        "📥 Starting incoming file:",
+        data
+    );
+
+
+    incomingFiles.set(
+        data.transferId,
+        {
+
+            transferId:
+                data.transferId,
+
+            name:
+                data.name,
+
+            size:
+                data.size || 0,
+
+            mime:
+                data.mime ||
+                "application/octet-stream",
+
+            chunks: [],
+
+            received: 0
+
+        }
+    );
+
+
+    addTransfer(
+        `📥 Receiving <strong>${escapeHTML(
+            data.name
+        )}</strong>...`
+    );
+
+}
+
+
+// ======================================================
+// RECEIVE BINARY
+// ======================================================
+
+async function handleIncomingBinary(
+    blob
+) {
+
+    // There should normally be only one active
+    // incoming file, but use the first active transfer.
+
+    let file =
+        null;
+
+
+    for (
+        const value
+        of incomingFiles.values()
+    ) {
+
+        file =
+            value;
+
+        break;
+
+    }
+
+
+    if (!file) {
+
+        console.warn(
+            "⚠️ Received binary data but no incoming file."
+        );
+
+        return;
+
+    }
+
+
+    file.chunks.push(
+        blob
+    );
+
+
+    file.received +=
+        blob.size;
+
+
+    const percent =
+        file.size
+            ? Math.min(
+                100,
+                (
+                    file.received /
+                    file.size
+                ) *
+                100
+            )
+            : 0;
+
+
+    console.log(
+        `📥 ${file.name}: ${Math.round(
+            percent
+        )}%`
+    );
+
+
+    const progress =
+        document.getElementById(
+            "transferProgress"
+        );
+
+
+    if (progress) {
+
+        progress.textContent =
+            `${Math.round(
+                percent
+            )}%`;
+
+    }
+
+}
+
+
+// ======================================================
+// FINISH INCOMING FILE
+// ======================================================
+
+function finishIncomingFile(data) {
+
+    const file =
+        incomingFiles.get(
+            data.transferId
+        );
+
+
+    if (!file) {
+
+        console.warn(
+            "⚠️ No incoming file state:",
+            data.transferId
+        );
+
+        return;
+
+    }
+
+
+    const blob =
+        new Blob(
+            file.chunks,
+            {
+                type:
+                    file.mime
+            }
+        );
+
+
+    const url =
+        URL.createObjectURL(
+            blob
+        );
+
+
+    const item =
+        document.createElement(
+            "div"
+        );
+
+
+    item.className =
+        "transfer";
+
+
+    let preview =
+        "";
+
+
+    // ==================================================
+    // IMAGE
+    // ==================================================
+
+    if (
+        file.mime &&
+        file.mime.startsWith(
+            "image/"
+        )
+    ) {
+
+        preview = `
+
+            <img
+                src="${url}"
+                class="file-thumbnail"
+                alt="${escapeHTML(
+                    file.name
+                )}"
+            >
+
+        `;
+
+    }
+
+    // ==================================================
+    // OTHER
+    // ==================================================
+
+    else {
+
+        preview = `
+
+            <div class="file-icon">
+
+                ${getFileIcon(
+                    file.name,
+                    file.mime
+                )}
+
+            </div>
+
+        `;
+
+    }
+
+
+    item.innerHTML = `
+
+        <div class="received-file">
+
+            ${preview}
+
+            <div class="file-details">
+
+                <strong>
+                    ${escapeHTML(
+                        file.name
+                    )}
+                </strong>
+
+                <small>
+                    ${formatBytes(
+                        file.received
+                    )}
+                </small>
+
+                <a
+                    class="download-btn"
+                    href="${url}"
+                    download="${escapeHTML(
+                        file.name
+                    )}"
+                >
+                    ⬇ Download
+                </a>
+
+            </div>
+
+        </div>
+
+    `;
+
+
+    transfers.prepend(
+        item
+    );
+
+
+    console.log(
+        `✅ Received ${file.name}`
+    );
+
+
+    incomingFiles.delete(
+        data.transferId
+    );
+
+}
+
+
+// ======================================================
+// FILE ICON
+// ======================================================
+
+function getFileIcon(
+    name,
+    mime
+) {
+
+    const ext =
+        String(
+            name || ""
+        )
+            .split(".")
+            .pop()
+            .toLowerCase();
+
+
+    if (
+        mime ===
+        "application/pdf"
+    )
+        return "📕";
+
+
+    if (
+        mime &&
+        mime.startsWith(
+            "video/"
+        )
+    )
+        return "🎬";
+
+
+    if (
+        mime &&
+        mime.startsWith(
+            "audio/"
+        )
+    )
+        return "🎵";
+
+
+    if (
+        [
+            "zip",
+            "rar",
+            "7z",
+            "tar",
+            "gz"
+        ].includes(ext)
+    )
+        return "📦";
+
+
+    if (
+        [
+            "doc",
+            "docx"
+        ].includes(ext)
+    )
+        return "📘";
+
+
+    if (
+        [
+            "xls",
+            "xlsx",
+            "csv"
+        ].includes(ext)
+    )
+        return "📊";
+
+
+    if (
+        [
+            "ppt",
+            "pptx"
+        ].includes(ext)
+    )
+        return "📙";
+
+
+    if (
+        [
+            "txt",
+            "md"
+        ].includes(ext)
+    )
+        return "📄";
+
+
+    if (
+        [
+            "js",
+            "html",
+            "css",
+            "py",
+            "json"
+        ].includes(ext)
+    )
+        return "💻";
+
+
+    return "📎";
+
+}
+
+
+// ======================================================
+// TRANSFER LOG
+// ======================================================
+
+function addTransfer(
+    html
+) {
+
+    if (!transfers)
+        return;
+
 
     const item =
         document.createElement(
@@ -1593,15 +1682,27 @@ function addTransfer(html) {
 }
 
 
-// =========================
-// LONG TEXT PREVIEW
-// =========================
+// ======================================================
+// TEXT PREVIEW
+// ======================================================
 
-function formatTextPreview(text) {
+function formatTextPreview(
+    text
+) {
 
-    if (text.length <= 600) {
+    text =
+        String(
+            text || ""
+        );
 
-        return escapeHTML(text);
+
+    if (
+        text.length <= 600
+    ) {
+
+        return escapeHTML(
+            text
+        );
 
     }
 
@@ -1622,68 +1723,96 @@ function formatTextPreview(text) {
     return `
 
         <div>
-            <strong>Starting...</strong>
+            <strong>
+                Starting...
+            </strong>
         </div>
 
-        <pre>
-${escapeHTML(start)}
-        </pre>
+        <pre>${escapeHTML(
+            start
+        )}</pre>
 
         <div>
             ...
         </div>
 
         <div>
-            <strong>Ending...</strong>
+            <strong>
+                Ending...
+            </strong>
         </div>
 
-        <pre>
-${escapeHTML(end)}
-        </pre>
+        <pre>${escapeHTML(
+            end
+        )}</pre>
 
     `;
 
 }
 
 
-// =========================
-// HELPERS
-// =========================
+// ======================================================
+// ESCAPE HTML
+// ======================================================
 
-function escapeHTML(text) {
+function escapeHTML(
+    text
+) {
 
     const div =
         document.createElement(
             "div"
         );
 
+
     div.textContent =
-        text;
+        String(
+            text ?? ""
+        );
+
 
     return div.innerHTML;
 
 }
 
 
-function formatBytes(bytes) {
+// ======================================================
+// FORMAT BYTES
+// ======================================================
 
-    if (!bytes)
+function formatBytes(
+    bytes
+) {
+
+    bytes =
+        Number(
+            bytes
+        );
+
+
+    if (
+        !bytes ||
+        bytes <= 0
+    )
         return "0 B";
 
 
-    const units =
-        [
-            "B",
-            "KB",
-            "MB",
-            "GB"
-        ];
+    const units = [
+        "B",
+        "KB",
+        "MB",
+        "GB",
+        "TB"
+    ];
 
 
     const index =
-        Math.floor(
-            Math.log(bytes) /
-            Math.log(1024)
+        Math.min(
+            Math.floor(
+                Math.log(bytes) /
+                Math.log(1024)
+            ),
+            units.length - 1
         );
 
 
@@ -1693,7 +1822,11 @@ function formatBytes(bytes) {
             1024,
             index
         )
-    ).toFixed(1)
+    ).toFixed(
+        index === 0
+            ? 0
+            : 1
+    )
     + " "
     + units[index];
 
