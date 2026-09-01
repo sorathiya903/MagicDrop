@@ -2195,15 +2195,8 @@ Commands:
 devices
 
 send <file>
-send <file> <deviceId>
-send <file> --all
 
 send-text <text>
-send-text <text> <deviceId>
-send-text <text> --all
-
-accept <transferId>
-reject <transferId>
 
 y
 n
