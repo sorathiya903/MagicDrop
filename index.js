@@ -1541,12 +1541,10 @@ rl.on("line", line => {
         rl.prompt();
         return;
     }
-            const input =
-                line.trim();
+            
 
 
-            if (!input)
-                return rl.prompt();
+            if (!input)  return rl.prompt();
 
 
             if (
