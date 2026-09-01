@@ -358,19 +358,19 @@ function sendJSON(ws, data) {
     }
 
 }
-
-
-// ==============================
-// BROADCAST DEVICES
-// ==============================
-
 function broadcastDevices() {
 
-    const list =
-        [...devices.values()].map(device => ({
+    const list = [
+        {
+            id: "terminal",
+            name: "💻 MagicDrop Host"
+        },
+
+        ...[...devices.values()].map(device => ({
             id: device.id,
             name: device.name
-        }));
+        }))
+    ];
 
     const message = {
         type: "devices",
