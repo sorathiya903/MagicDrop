@@ -750,7 +750,22 @@ function acceptTransfer(
         devices.get(
             transfer.senderId
         );
+if (
+    transfer.senderId === "terminal"
+) {
 
+    transfer.accepted.add(
+        receiver.id
+    );
+
+    sendTerminalFileToReceiver(
+        transfer,
+        receiver.id
+    );
+
+    return;
+
+}
 
     if (sender) {
 
