@@ -1494,10 +1494,53 @@ Commands:
     rl.prompt();
 
 
-    rl.on(
-        "line",
-        line => {
+rl.on("line", line => {
 
+    const input = line.trim();
+
+    // =========================
+    // TERMINAL TRANSFER ANSWER
+    // =========================
+
+    if (
+        pendingTerminalTransfers.size &&
+        (
+            input.toLowerCase() === "y" ||
+            input.toLowerCase() === "n"
+        )
+    ) {
+
+        const transfer =
+            [...pendingTerminalTransfers.values()][0];
+
+        pendingTerminalTransfers.delete(
+            transfer.id
+        );
+
+        if (
+            input.toLowerCase() === "y"
+        ) {
+
+            console.log(
+                `✅ Accepted: ${transfer.id}`
+            );
+
+            // TODO: send accept-transfer
+            // depending on whether the
+            // transfer came from browser.
+
+        } else {
+
+            console.log(
+                `❌ Rejected: ${transfer.id}`
+            );
+
+            // TODO: send reject-transfer
+        }
+
+        rl.prompt();
+        return;
+    }
             const input =
                 line.trim();
 
