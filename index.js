@@ -370,13 +370,7 @@ function askTerminalApproval(
     if (
         transfer.kind === "text"
     ) {
-
-        console.log(
-            `Text: ${formatTerminalText(
-                transfer.text
-            )}`
-        );
-
+            
     } else {
 
         console.log(
@@ -1978,16 +1972,9 @@ Commands:
 
   devices
   send <file>
-  send <file> <deviceId>
-  send <file> --all
-
+  
   send-text <text>
-  send-text <text> <deviceId>
-  send-text <text> --all
-
-  accept <transferId>
-  reject <transferId>
-
+ 
   y
   n
 
