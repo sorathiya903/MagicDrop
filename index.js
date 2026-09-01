@@ -505,28 +505,23 @@ function sendTransferRequest(
 
     }
 
-// ==============================
-// TARGET LIST
-// ==============================
-
 function resolveTargets(targets) {
 
-    if (
-        targets.includes("all")
-    ) {
+    if (targets.includes("all")) {
 
         return [
+            "terminal",
             ...devices.keys()
         ];
 
     }
 
-    return targets.filter(
-        id => devices.has(id)
+    return targets.filter(id =>
+        id === "terminal" ||
+        devices.has(id)
     );
 
-}
-
+            }
 
 // ==============================
 // HANDLE TRANSFER REQUEST
