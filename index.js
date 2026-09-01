@@ -6,13 +6,24 @@ const WebSocket = require("ws");
 const QRCode = require("qrcode");
 const os = require("os");
 const path = require("path");
-const readline = require("readline");
+const fs = require("fs");
 
 const PORT = 8765;
 
-// Connected devices
 const devices = new Map();
+const transfers = new Map();
 
+const app = express();
+const server = http.createServer(app);
+const wss = new WebSocket.Server({ server });
+
+app.use(express.json({ limit: "50mb" }));
+app.use(express.static(path.join(__dirname, "public")));
+
+
+// =========================
+// LOCAL IP
+// =========================
 
 function getLocalIP() {
 
@@ -28,6 +39,7 @@ function getLocalIP() {
             ) {
                 return iface.address;
             }
+
         }
     }
 
@@ -35,95 +47,408 @@ function getLocalIP() {
 }
 
 
-function startServer() {
+// =========================
+// SEND TO DEVICE
+// =========================
 
-    const app = express();
+function sendToDevice(id, data) {
 
-    const server = http.createServer(app);
+    const device = devices.get(id);
 
-    const wss = new WebSocket.Server({
-        server
-    });
+    if (
+        device &&
+        device.ws.readyState === WebSocket.OPEN
+    ) {
+
+        device.ws.send(
+            JSON.stringify(data)
+        );
+
+    }
+
+}
 
 
-    app.use(express.static(
-        path.join(__dirname, "public")
-    ));
+// =========================
+// BROADCAST DEVICES
+// =========================
+
+function broadcastDevices() {
+
+    const list =
+        [...devices.values()].map(device => ({
+            id: device.id,
+            name: device.name
+        }));
 
 
-    wss.on("connection", ws => {
+    const message = {
+        type: "devices",
+        devices: list
+    };
 
-        console.log("New device connected");
 
-        ws.on("message", message => {
+    for (const device of devices.values()) {
 
-            let data;
+        if (
+            device.ws.readyState ===
+            WebSocket.OPEN
+        ) {
 
-            try {
-                data = JSON.parse(message);
-            } catch {
-                return;
+            device.ws.send(
+                JSON.stringify(message)
+            );
+
+        }
+
+    }
+
+}
+
+
+// =========================
+// WEBSOCKET
+// =========================
+
+wss.on("connection", ws => {
+
+    console.log("New connection");
+
+
+    ws.on("message", message => {
+
+        let data;
+
+        try {
+            data = JSON.parse(message);
+        } catch {
+            return;
+        }
+
+
+        // =====================
+        // JOIN
+        // =====================
+
+        if (data.type === "join") {
+
+            const id =
+                Math.random()
+                    .toString(36)
+                    .substring(2, 10);
+
+
+            const device = {
+
+                id,
+
+                name:
+                    data.name?.trim() ||
+                    "Unknown",
+
+                ws
+
+            };
+
+
+            devices.set(id, device);
+
+            ws.deviceId = id;
+
+
+            console.log(
+                `Connected: ${device.name}`
+            );
+
+
+            ws.send(JSON.stringify({
+
+                type: "joined",
+
+                id,
+
+                name: device.name
+
+            }));
+
+
+            broadcastDevices();
+
+            return;
+        }
+
+
+        // =====================
+        // TRANSFER REQUEST
+        // =====================
+
+        if (data.type === "transfer-request") {
+
+            const sender =
+                devices.get(ws.deviceId);
+
+            if (!sender) return;
+
+
+            const transferId =
+                Math.random()
+                    .toString(36)
+                    .substring(2, 12);
+
+
+            const transfer = {
+
+                id: transferId,
+
+                senderId: sender.id,
+
+                senderName: sender.name,
+
+                targets: data.targets || [],
+
+                kind: data.kind,
+
+                name: data.name || null,
+
+                size: data.size || 0,
+
+                mime: data.mime || null,
+
+                text: data.text || null,
+
+                accepted: new Set()
+
+            };
+
+
+            transfers.set(
+                transferId,
+                transfer
+            );
+
+
+            // Everyone
+            if (data.targets?.includes("all")) {
+
+                for (const device of devices.values()) {
+
+                    if (device.id === sender.id)
+                        continue;
+
+
+                    sendToDevice(
+                        device.id,
+                        {
+                            type: "incoming-transfer",
+
+                            transferId,
+
+                            senderId: sender.id,
+
+                            senderName: sender.name,
+
+                            kind: transfer.kind,
+
+                            name: transfer.name,
+
+                            size: transfer.size,
+
+                            mime: transfer.mime,
+
+                            text: transfer.text
+                        }
+                    );
+
+                }
+
             }
 
+            // Specific devices
+            else {
 
-            // Device joining
-            if (data.type === "join") {
+                for (const targetId of data.targets) {
 
-                const id =
-                    Math.random()
-                        .toString(36)
-                        .substring(2, 10);
-
-
-                const device = {
-                    id,
-                    name: data.name || "Unknown",
-                    ws
-                };
+                    if (targetId === sender.id)
+                        continue;
 
 
-                devices.set(id, device);
+                    sendToDevice(
+                        targetId,
+                        {
+                            type: "incoming-transfer",
+
+                            transferId,
+
+                            senderId: sender.id,
+
+                            senderName: sender.name,
+
+                            kind: transfer.kind,
+
+                            name: transfer.name,
+
+                            size: transfer.size,
+
+                            mime: transfer.mime,
+
+                            text: transfer.text
+                        }
+                    );
+
+                }
+
+            }
+
+            return;
+        }
 
 
-                ws.deviceId = id;
+        // =====================
+        // ACCEPT
+        // =====================
+
+        if (data.type === "accept-transfer") {
+
+            const transfer =
+                transfers.get(data.transferId);
+
+            if (!transfer)
+                return;
 
 
-                console.log(
-                    `Connected: ${device.name}`
+            transfer.accepted.add(
+                ws.deviceId
+            );
+
+
+            // TEXT
+            if (transfer.kind === "text") {
+
+                sendToDevice(
+                    ws.deviceId,
+                    {
+                        type: "text-received",
+
+                        transferId:
+                            transfer.id,
+
+                        senderName:
+                            transfer.senderName,
+
+                        text:
+                            transfer.text
+                    }
                 );
 
 
-                ws.send(JSON.stringify({
-                    type: "joined",
-                    id,
-                    name: device.name
-                }));
+                sendToDevice(
+                    transfer.senderId,
+                    {
+                        type: "transfer-accepted",
 
+                        transferId:
+                            transfer.id,
 
-                broadcastDevices();
+                        receiverId:
+                            ws.deviceId,
+
+                        receiverName:
+                            devices.get(ws.deviceId)
+                                ?.name
+                    }
+                );
+
             }
 
 
-            // More message types will be added here
-            // later.
-        });
+            // FILE / IMAGE
+            else {
 
+                sendToDevice(
+                    transfer.senderId,
+                    {
+                        type: "upload-approved",
 
-        ws.on("close", () => {
+                        transferId:
+                            transfer.id,
 
-            if (ws.deviceId) {
+                        receiverId:
+                            ws.deviceId,
 
-                devices.delete(ws.deviceId);
+                        receiverName:
+                            devices.get(ws.deviceId)
+                                ?.name
+                    }
+                );
 
-                broadcastDevices();
             }
 
-        });
+            return;
+        }
+
+
+        // =====================
+        // REJECT
+        // =====================
+
+        if (data.type === "reject-transfer") {
+
+            const transfer =
+                transfers.get(data.transferId);
+
+            if (!transfer)
+                return;
+
+
+            sendToDevice(
+                transfer.senderId,
+                {
+                    type: "transfer-rejected",
+
+                    transferId:
+                        transfer.id,
+
+                    receiverName:
+                        devices.get(ws.deviceId)
+                            ?.name
+                }
+            );
+
+            return;
+        }
 
     });
 
 
-    server.listen(PORT, "0.0.0.0", async () => {
+    ws.on("close", () => {
+
+        if (ws.deviceId) {
+
+            console.log(
+                `Disconnected: ${
+                    devices.get(ws.deviceId)?.name
+                }`
+            );
+
+            devices.delete(ws.deviceId);
+
+            broadcastDevices();
+
+        }
+
+    });
+
+});
+
+
+// =========================
+// START
+// =========================
+
+server.listen(
+    PORT,
+    "0.0.0.0",
+    async () => {
 
         const ip = getLocalIP();
 
@@ -134,7 +459,9 @@ function startServer() {
         console.log("");
         console.log("✨ MagicDrop");
         console.log("");
-        console.log(`🌐 ${url}`);
+        console.log(
+            `🌐 ${url}`
+        );
         console.log("");
 
 
@@ -151,7 +478,7 @@ function startServer() {
 
             console.log(qr);
 
-        } catch (error) {
+        } catch {
 
             console.log(
                 "Could not generate QR code."
@@ -160,64 +487,3 @@ function startServer() {
         }
 
     });
-
-}
-
-
-function broadcastDevices() {
-
-    const list =
-        [...devices.values()].map(device => ({
-            id: device.id,
-            name: device.name
-        }));
-
-
-    const message =
-        JSON.stringify({
-            type: "devices",
-            devices: list
-        });
-
-
-    for (const device of devices.values()) {
-
-        if (device.ws.readyState === WebSocket.OPEN) {
-
-            device.ws.send(message);
-        }
-
-    }
-
-}
-
-
-// -------------------------
-// CLI
-// -------------------------
-
-const command =
-    process.argv[2];
-
-
-if (command === "start") {
-
-    startServer();
-
-} else {
-
-    console.log(`
-✨ MagicDrop
-
-Usage:
-
-  md start
-
-Coming soon:
-
-  md devices
-  md send <file>
-  md send <file> --all
-`);
-
-}
