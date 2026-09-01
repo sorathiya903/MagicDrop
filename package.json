@@ -17,7 +17,7 @@
     "developer-tools"
   ],
   "license": "MIT",
-  "author": "Aditya Sorathiya"
+  "author": "Aditya Sorathiya",
   "dependencies": {
     "express": "^5.1.0",
     "ws": "^8.18.3",
