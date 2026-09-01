@@ -63,20 +63,362 @@ function join() {
 
 }
 
+function receiveFileChunk(blob) {
 
+    if (!incomingTransfer)
+        return;
+
+    incomingBuffers.push(blob);
+
+}
+function finishIncomingFile(data) {
+
+    if (!incomingTransfer)
+        return;
+
+
+    const blob =
+        new Blob(
+            incomingBuffers,
+            {
+                type:
+                    data.mime ||
+                    "application/octet-stream"
+            }
+        );
+
+
+    const url =
+        URL.createObjectURL(blob);
+
+
+    const item =
+        document.createElement("div");
+
+    item.className =
+        "received-file";
+
+
+    let preview = "";
+
+
+    // IMAGE
+    if (
+        data.mime &&
+        data.mime.startsWith("image/")
+    ) {
+
+        preview = `
+
+            <img
+                src="${url}"
+                class="file-thumbnail"
+                alt="${escapeHTML(data.name)}"
+            >
+
+        `;
+
+    }
+
+    // PDF
+    else if (
+        data.mime ===
+        "application/pdf"
+    ) {
+
+        preview = `
+            <div class="file-icon">
+                📄
+            </div>
+        `;
+
+    }
+
+    // VIDEO
+    else if (
+        data.mime &&
+        data.mime.startsWith("video/")
+    ) {
+
+        preview = `
+            <div class="file-icon">
+                🎬
+            </div>
+        `;
+
+    }
+
+    // AUDIO
+    else if (
+        data.mime &&
+        data.mime.startsWith("audio/")
+    ) {
+
+        preview = `
+            <div class="file-icon">
+                🎵
+            </div>
+        `;
+
+    }
+
+    // ZIP
+    else if (
+        data.name &&
+        (
+            data.name.endsWith(".zip") ||
+            data.name.endsWith(".rar") ||
+            data.name.endsWith(".7z")
+        )
+    ) {
+
+        preview = `
+            <div class="file-icon">
+                📦
+            </div>
+        `;
+
+    }
+
+    // OTHER
+    else {
+
+        preview = `
+            <div class="file-icon">
+                📁
+            </div>
+        `;
+
+    }
+
+
+    item.innerHTML = `
+
+        ${preview}
+
+        <div class="file-details">
+
+            <strong>
+                ${escapeHTML(data.name)}
+            </strong>
+
+            <small>
+                ${formatBytes(data.size)}
+            </small>
+
+            <a
+                class="download-btn"
+                href="${url}"
+                download="${escapeHTML(data.name)}"
+            >
+                ⬇ Download
+            </a>
+
+        </div>
+
+    `;
+
+
+    transfers.prepend(item);
+
+
+    incomingBuffers = [];
+
+    incomingTransfer = null;
+
+                            }
 // =========================
 // RECEIVE SERVER MESSAGE
 // =========================
+async function uploadFile(
+    transferId,
+    localId
+) {
 
+    const file =
+        pendingFiles.get(
+            localId
+        );
+
+
+    if (!file)
+        return;
+
+
+    socket.send(
+        JSON.stringify({
+
+            type:
+                "upload-start",
+
+            transferId
+
+        })
+    );
+
+
+    const chunkSize =
+        64 * 1024;
+
+
+    for (
+        let offset = 0;
+        offset < file.size;
+        offset += chunkSize
+    ) {
+
+        const chunk =
+            file.slice(
+                offset,
+                offset + chunkSize
+            );
+
+
+        const buffer =
+            await chunk.arrayBuffer();
+
+
+        socket.send(
+            buffer
+        );
+
+
+        // Don't flood the WebSocket.
+        await new Promise(
+            resolve =>
+                setTimeout(
+                    resolve,
+                    0
+                )
+        );
+
+    }
+
+
+    socket.send(
+        JSON.stringify({
+
+            type:
+                "upload-finish",
+
+            transferId
+
+        })
+    );
+
+
+    pendingFiles.delete(
+        localId
+    );
+
+        }
+
+function sendFiles() {
+
+    const files =
+        [...fileInput.files];
+
+
+    if (!files.length) {
+        alert("Select a file first.");
+        return;
+    }
+
+
+    const targets =
+        getTargets();
+
+
+    if (!targets.length) {
+        alert("Select a device first.");
+        return;
+    }
+
+
+    files.forEach(file => {
+
+        const localId =
+            Math.random()
+                .toString(36)
+                .substring(2, 10);
+
+
+        pendingFiles.set(
+            localId,
+            file
+        );
+
+
+        socket.send(
+            JSON.stringify({
+
+                type:
+                    "transfer-request",
+
+                localId,
+
+                targets,
+
+                kind:
+                    file.type.startsWith(
+                        "image/"
+                    )
+                        ? "image"
+                        : "file",
+
+                name:
+                    file.name,
+
+                size:
+                    file.size,
+
+                mime:
+                    file.type
+
+            })
+        );
+
+    });
+
+
+    fileInput.value = "";
+
+                  }
+    
 socket.addEventListener(
     "message",
     event => {
 
+        // Binary file chunk
+        if (event.data instanceof Blob) {
+
+            receiveFileChunk(event.data);
+
+            return;
+        }
+
+
         const data =
             JSON.parse(event.data);
-// =========================
-// TRANSFER REQUEST
-// =========================
+        if (data.type === "transfer-created") {
+
+    const file =
+        [...fileInput.files]
+            .find(
+                f =>
+                    f.name === data.name
+            );
+
+    if (file) {
+
+        pendingUploads.set(
+            data.transferId,
+            file
+        );
+
+    }
+
+        }
 
 if (data.type === "transfer-request") {
 
@@ -172,6 +514,25 @@ if (data.type === "transfer-request") {
     }
 
                     }
+
+        if (data.type === "upload-start") {
+
+    incomingTransfer = data;
+    incomingBuffers = [];
+
+    addTransfer(
+        `📥 Receiving <strong>${escapeHTML(
+            data.name
+        )}</strong>...`
+    );
+
+        }
+
+        if (data.type === "file-complete") {
+
+    finishIncomingFile(data);
+
+        }
         // =========================
 // ACCEPT TRANSFER
 // =========================
