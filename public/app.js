@@ -1195,13 +1195,12 @@ function showDevices(devices) {
 // =========================
 
 function getTargets() {
+    if (selectedDevices.has("all")) {
+        return ["all"];
+    }
 
-    return [
-        ...selectedDevices
-    ];
-
+    return [...selectedDevices];
 }
-
 
 // =========================
 // SEND TEXT
