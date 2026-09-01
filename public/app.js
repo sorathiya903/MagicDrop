@@ -1092,30 +1092,29 @@ function showDevices(devices) {
 
     selectedDevices.clear();
 
+    // =========================
+    // DEVICE BUTTONS
+    // =========================
 
     devices
-        .filter(
-            device =>
-                device.id !== myId
-        )
+        .filter(device => device.id !== myId)
         .forEach(device => {
 
             const button =
-                document.createElement(
-                    "button"
-                );
-
+                document.createElement("button");
 
             button.textContent =
                 `📱 ${device.name}`;
 
-
             button.onclick = () => {
 
+                // If Everyone was selected,
+                // remove it first.
+                selectedDevices.delete("all");
+
+                // Toggle this device
                 if (
-                    selectedDevices.has(
-                        device.id
-                    )
+                    selectedDevices.has(device.id)
                 ) {
 
                     selectedDevices.delete(
@@ -1135,29 +1134,42 @@ function showDevices(devices) {
                     button.classList.add(
                         "selected"
                     );
-
                 }
 
+                // Remove Everyone selected state
+                const everyone =
+                    document.getElementById(
+                        "everyoneBtn"
+                    );
+
+                if (everyone) {
+                    everyone.classList.remove(
+                        "selected"
+                    );
+                }
+
+                console.log(
+                    "Selected:",
+                    [...selectedDevices]
+                );
             };
 
-
-            devicesContainer
-                .appendChild(button);
+            devicesContainer.appendChild(button);
 
         });
 
 
+    // =========================
     // EVERYONE
+    // =========================
 
     const all =
-        document.createElement(
-            "button"
-        );
+        document.createElement("button");
 
+    all.id = "everyoneBtn";
 
     all.textContent =
         "🚀 Everyone";
-
 
     all.onclick = () => {
 
@@ -1165,30 +1177,22 @@ function showDevices(devices) {
 
         selectedDevices.add("all");
 
+        // Remove selected state from devices
+        devicesContainer
+            .querySelectorAll("button")
+            .forEach(btn => {
+                btn.classList.remove("selected");
+            });
 
-        document
-            .querySelectorAll(
-                "#devices button"
-            )
-            .forEach(
-                btn =>
-                    btn.classList.remove(
-                        "selected"
-                    )
-            );
+        all.classList.add("selected");
 
-        all.classList.add(
-            "selected"
+        console.log(
+            "Selected: Everyone"
         );
-
     };
 
-
-    devicesContainer
-        .appendChild(all);
-
+    devicesContainer.appendChild(all);
 }
-
 
 // =========================
 // GET TARGETS
