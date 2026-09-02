@@ -2352,9 +2352,6 @@ function startCLI() {
 
     console.log(`
 
-MagicDrop ${getVersion()}
-by Aditya Sorathiya
-
 Commands:
 
   devices
