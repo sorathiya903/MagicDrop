@@ -144,18 +144,26 @@ From the browser you can:
 
 Browser-to-browser file transfers are sent in **chunks** and combined into a single file when the transfer finishes.
 
-💻 Terminal Commands
+## 💻 Terminal Commands
 
 Command	Description
 
 `md start` - Start MagicDrop
+
 `md -v` -	Show the installed version
+
 `devices` -	Show connected devices
+
 `send <file>` -	Send a file
+
 `send-text` - <text>	Send text
+
 `y`	- Accept the oldest pending transfer
+
 `n` -	Reject the oldest pending transfer
+
 `help` -	Show available commands
+
 `exit` -	Stop MagicDrop
 
 
