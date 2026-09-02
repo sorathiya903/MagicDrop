@@ -79,23 +79,22 @@ socket.addEventListener("close", () => {
 
 socket.addEventListener("message", async event => {
 
-    // ==================================================
-    // BINARY FILE CHUNK
-    // ==================================================
 
-    if (event.data instanceof Blob) {
-        receiveFileChunk(event.data);
-        return;
-    }
+if (event.data instanceof Blob) {
 
-    if (event.data instanceof ArrayBuffer) {
-        receiveFileChunk(
-            new Blob([event.data])
-        );
-        return;
-    }
+    receiveFileChunk(event.data);
 
+    return;
+}
 
+if (event.data instanceof ArrayBuffer) {
+
+    receiveFileChunk(
+        new Blob([event.data])
+    );
+
+    return;
+}
     // ==================================================
     // JSON
     // ==================================================
