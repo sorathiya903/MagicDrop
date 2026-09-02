@@ -6,8 +6,8 @@ let myName = null;
 let selectedDevices = new Set();
 let currentIncoming = null;
 
-// Receiving file
-let activeIncomingFile = null;
+// Incoming files currently being received
+const incomingFiles = new Map();
 
 // Files waiting for receiver approval
 const pendingFiles = new Map();
