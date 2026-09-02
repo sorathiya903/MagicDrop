@@ -986,7 +986,7 @@ function acceptTransfer(
         transfer.senderId ===
         "terminal"
     ) {
-
+           console.log("Running sendTerminalFileToReceiver()")
         sendTerminalFileToReceiver(
             transfer,
             receiver.id
