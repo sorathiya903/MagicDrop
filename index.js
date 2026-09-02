@@ -1226,51 +1226,53 @@ function sendTerminalFileToReceiver(
         );
 
 
-    stream.on(
-        "data",
-        chunk => {
 
-            if (
-                receiver.ws.readyState !==
-                WebSocket.OPEN
-            ) {
+stream.on(
+    "data",
+    chunk => {
 
-                stream.destroy();
+        console.log(
+            `📤 Sending chunk: ${formatSize(
+                chunk.length
+            )}`
+        );
 
-                return;
+        if (
+            receiver.ws.readyState !==
+            WebSocket.OPEN
+        ) {
 
-            }
+            stream.destroy();
 
-
-            stream.pause();
-
-
-            receiver.ws.send(
-                chunk,
-                error => {
-
-                    if (error) {
-
-                        console.log(
-                            `❌ Send error: ${error.message}`
-                        );
-
-                        stream.destroy();
-
-                        return;
-
-                    }
-
-
-                    stream.resume();
-
-                }
-            );
+            return;
 
         }
-    );
 
+        stream.pause();
 
+        receiver.ws.send(
+            chunk,
+            error => {
+
+                if (error) {
+
+                    console.log(
+                        `❌ Send error: ${error.message}`
+                    );
+
+                    stream.destroy();
+
+                    return;
+
+                }
+
+                stream.resume();
+
+            }
+        );
+
+    }
+);
     stream.on(
         "end",
         () => {
