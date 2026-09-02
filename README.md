@@ -16,7 +16,7 @@ MagicDrop lets you share files and text between:
 Install MagicDrop globally with npm:
 
 ```bash
-npm install -g magicdrop 
+npm install -g magicdrop-cli
 ```
 
 ### ▶️ Start MagicDrop

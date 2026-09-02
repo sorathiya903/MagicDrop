@@ -1,5 +1,5 @@
 {
-  "name": "magicdrop",
+  "name": "magicdrop-cli",
   "version": "0.0.1",
   "description": "Instant local-network sharing for files, images and text.",
   "main": "index.js",
