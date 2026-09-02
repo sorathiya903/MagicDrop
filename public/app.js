@@ -1172,7 +1172,7 @@ document
             if (!currentIncoming)
                 return;
 
-
+console.log("sending accept-transfer")
             socket.send(
                 JSON.stringify({
 
@@ -1184,7 +1184,7 @@ document
 
                 })
             );
-
+console.log("sent accept-transfer")
 
             addTransfer(
                 "✅ Transfer accepted"
