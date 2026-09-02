@@ -367,31 +367,45 @@ function getFileIcon(name, mime) {
 }
 
 
-// ======================================================
-// START INCOMING FILE
-// ======================================================
-
 function startIncomingFile(data) {
 
-    activeIncomingFile = {
+    const transferId =
+        data.transferId;
 
-        transferId:
-            data.transferId,
+    if (!transferId) {
 
-        name:
-            data.name || "received-file",
+        console.error(
+            "❌ file-start has no transferId"
+        );
 
-        size:
-            Number(data.size || 0),
+        return;
+    }
 
-        mime:
-            data.mime ||
-            "application/octet-stream",
 
-        chunks: [],
+    incomingFiles.set(
+        transferId,
+        {
 
-        received: 0
-    };
+            transferId,
+
+            name:
+                data.name ||
+                "received-file",
+
+            size:
+                Number(data.size || 0),
+
+            mime:
+                data.mime ||
+                "application/octet-stream",
+
+            chunks: [],
+
+            received:
+                0
+
+        }
+    );
 
 
     addTransfer(`
@@ -403,41 +417,66 @@ function startIncomingFile(data) {
         </strong>...
     `);
 
+
     console.log(
         `📥 Started receiving ${data.name}`
     );
+
 }
-
-
-// ======================================================
-// RECEIVE FILE CHUNK
-// ======================================================
-
 function receiveFileChunk(blob) {
 
-    if (!activeIncomingFile) {
+    /*
+     * Terminal → browser sends raw binary chunks.
+     *
+     * The browser has already received file-start,
+     * so find the active incoming transfer.
+     */
+
+    if (!incomingFiles.size) {
 
         console.warn(
-            "Received binary data without active file."
+            "⚠️ Received binary data without an active file."
         );
 
         return;
     }
 
 
-    activeIncomingFile.chunks.push(blob);
+    /*
+     * For now MagicDrop handles one incoming
+     * file stream at a time.
+     */
 
-    activeIncomingFile.received +=
+    const transfer =
+        incomingFiles.values().next().value;
+
+
+    if (!transfer) {
+
+        console.warn(
+            "⚠️ Incoming transfer not found."
+        );
+
+        return;
+    }
+
+
+    transfer.chunks.push(
+        blob
+    );
+
+
+    transfer.received +=
         blob.size;
 
 
     const percent =
-        activeIncomingFile.size
+        transfer.size
             ? Math.min(
                 100,
                 (
-                    activeIncomingFile.received /
-                    activeIncomingFile.size
+                    transfer.received /
+                    transfer.size
                 ) * 100
             )
             : 0;
@@ -445,81 +484,69 @@ function receiveFileChunk(blob) {
 
     console.log(
         `📥 Receiving ${
-            activeIncomingFile.name
+            transfer.name
         }: ${
             formatBytes(
-                activeIncomingFile.received
+                transfer.received
             )
         } / ${
             formatBytes(
-                activeIncomingFile.size
+                transfer.size
             )
         } (${
             Math.round(percent)
         }%)`
     );
-}
 
-
-// ======================================================
-// FINISH INCOMING FILE
-// ======================================================
+            }
 
 function finishIncomingFile(data) {
 
-    if (!activeIncomingFile) {
+    const transfer =
+        incomingFiles.get(
+            data.transferId
+        );
+
+
+    if (!transfer) {
 
         console.warn(
-            "file-complete received but no active file."
+            "❌ file-complete received but transfer was not found:",
+            data.transferId
         );
 
         return;
     }
 
 
-    const file =
-        activeIncomingFile;
-
-
-    /*
-     * Make sure this completion belongs
-     * to the currently receiving file.
-     */
-
-    if (
-        data.transferId &&
-        file.transferId !== data.transferId
-    ) {
-
-        console.warn(
-            "Transfer ID mismatch."
-        );
-
-        return;
-    }
+    console.log(
+        `📦 Combining ${transfer.chunks.length} chunks...`
+    );
 
 
     const blob =
         new Blob(
-            file.chunks,
+            transfer.chunks,
             {
                 type:
-                    file.mime ||
-                    "application/octet-stream"
+                    transfer.mime
             }
         );
 
 
     const url =
-        URL.createObjectURL(blob);
+        URL.createObjectURL(
+            blob
+        );
 
 
     // ==================================================
-    // TRANSFER CARD
+    // CREATE TRANSFER CARD
     // ==================================================
 
     const item =
         document.createElement("div");
+
 
     item.className =
         "transfer";
@@ -527,13 +554,13 @@ function finishIncomingFile(data) {
 
     const icon =
         getFileIcon(
-            file.name,
-            file.mime
+            transfer.name,
+            transfer.mime
         );
 
 
     // ==================================================
-    // IMAGE PREVIEW
+    // PREVIEW
     // ==================================================
 
     let preview = `
@@ -544,19 +571,27 @@ function finishIncomingFile(data) {
 
 
     if (
-        file.mime &&
-        file.mime.startsWith("image/")
+        transfer.mime &&
+        transfer.mime.startsWith(
+            "image/"
+        )
     ) {
 
         preview = `
             <img
                 src="${url}"
                 class="file-thumbnail"
-                alt="${escapeHTML(file.name)}"
+                alt="${escapeHTML(
+                    transfer.name
+                )}"
             >
         `;
     }
 
+
+    // ==================================================
+    // CARD
+    // ==================================================
 
     item.innerHTML = `
 
@@ -567,17 +602,23 @@ function finishIncomingFile(data) {
             <div class="file-details">
 
                 <strong>
-                    ${escapeHTML(file.name)}
+                    ${escapeHTML(
+                        transfer.name
+                    )}
                 </strong>
 
                 <small>
-                    ${formatBytes(blob.size)}
+                    ${formatBytes(
+                        blob.size
+                    )}
                 </small>
 
                 <a
                     class="download-btn"
                     href="${url}"
-                    download="${escapeHTML(file.name)}"
+                    download="${escapeHTML(
+                        transfer.name
+                    )}"
                 >
                     ⬇ Download
                 </a>
@@ -589,26 +630,34 @@ function finishIncomingFile(data) {
     `;
 
 
-    transfers.prepend(item);
-
-
-    console.log(
-        `✅ Received ${file.name}`
+    transfers.prepend(
+        item
     );
 
 
     console.log(
-        `📦 Size: ${formatBytes(blob.size)}`
+        `✅ Received ${transfer.name}`
     );
 
 
-    // Important:
-    // Don't revoke the object URL immediately.
-    // The download button needs it.
+    console.log(
+        `📦 Final size: ${
+            formatBytes(blob.size)
+        }`
+    );
 
-    activeIncomingFile = null;
+
+    /*
+     * Do NOT revoke the URL immediately.
+     *
+     * The Download button needs the URL.
+     */
+
+    incomingFiles.delete(
+        data.transferId
+    );
+
 }
-
 
 // ======================================================
 // SEND FILES
