@@ -1054,61 +1054,79 @@ function acceptTransfer(
 
     }
 
+// ==================================================
+// FILE FROM BROWSER
+// ==================================================
 
-    // ==================================================
-    // FILE FROM BROWSER
-    // ==================================================
+// Tell receiver that the file is about to arrive.
+sendJSON(
+    receiver.ws,
+    {
+        type: "file-start",
 
-    sendJSON(
-        sender.ws,
-        {
+        transferId:
+            transfer.id,
 
-            type:
-                "transfer-accepted",
+        name:
+            transfer.name,
 
-            transferId:
-                transfer.id,
+        size:
+            transfer.size,
 
-            receiverId:
-                receiver.id,
+        mime:
+            transfer.mime,
 
-            receiverName:
-                receiver.name
-
-        }
-    );
+        senderName:
+            transfer.senderName
+    }
+);
 
 
-    sendJSON(
-        sender.ws,
-        {
+// Tell sender that uploading is approved.
+sendJSON(
+    sender.ws,
+    {
+        type: "transfer-accepted",
 
-            type:
-                "upload-approved",
+        transferId:
+            transfer.id,
 
-            transferId:
-                transfer.id,
+        receiverId:
+            receiver.id,
 
-            localId:
-                transfer.localId,
+        receiverName:
+            receiver.name
+    }
+);
 
-            name:
-                transfer.name,
 
-            size:
-                transfer.size,
+sendJSON(
+    sender.ws,
+    {
+        type: "upload-approved",
 
-            mime:
-                transfer.mime,
+        transferId:
+            transfer.id,
 
-            receiverId:
-                receiver.id,
+        localId:
+            transfer.localId,
 
-            receiverName:
-                receiver.name
+        name:
+            transfer.name,
 
-        }
-    );
+        size:
+            transfer.size,
+
+        mime:
+            transfer.mime,
+
+        receiverId:
+            receiver.id,
+
+        receiverName:
+            receiver.name
+    }
+);
 
 }
 // ======================================================
