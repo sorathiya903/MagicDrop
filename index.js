@@ -880,7 +880,9 @@ function acceptTransfer(
         return;
 
 
-    // Make sure receiver is target.
+    // ==================================================
+    // SECURITY
+    // ==================================================
 
     if (
         !transfer.targets.includes(
@@ -897,6 +899,81 @@ function acceptTransfer(
         receiver.id
     );
 
+
+    // ==================================================
+    // TERMINAL SENDER
+    // ==================================================
+    // IMPORTANT:
+    // The terminal is not inside `devices`,
+    // so do NOT try devices.get("terminal").
+
+    if (
+        transfer.senderId ===
+        "terminal"
+    ) {
+
+        console.log("");
+
+        console.log(
+            `✅ ${receiver.name} accepted ${transfer.name}`
+        );
+
+        // TEXT FROM TERMINAL
+        if (
+            transfer.kind ===
+            "text"
+        ) {
+
+            sendJSON(
+                receiver.ws,
+                {
+
+                    type:
+                        "text-received",
+
+                    transferId:
+                        transfer.id,
+
+                    senderName:
+                        "MagicDrop Host",
+
+                    text:
+                        transfer.text
+
+                }
+            );
+
+            console.log(
+                "💬 Terminal text sent."
+            );
+
+            return;
+
+        }
+
+
+        // FILE FROM TERMINAL
+        console.log(
+            "Checking condition for sendTerminalFileToReceiver"
+        );
+
+        console.log(
+            "Running sendTerminalFileToReceiver()"
+        );
+
+        sendTerminalFileToReceiver(
+            transfer,
+            receiver.id
+        );
+
+        return;
+
+    }
+
+
+    // ==================================================
+    // BROWSER SENDER
+    // ==================================================
 
     const sender =
         devices.get(
@@ -925,7 +1002,7 @@ function acceptTransfer(
 
 
     // ==================================================
-    // TEXT
+    // TEXT FROM BROWSER
     // ==================================================
 
     if (
@@ -979,27 +1056,7 @@ function acceptTransfer(
 
 
     // ==================================================
-    // TERMINAL SENDER
-    // ==================================================
-console.log("Checking condition for sendTerminalFileToReceiver")
-    if (
-        transfer.senderId ===
-        "terminal"
-    ) {
-           console.log("Running sendTerminalFileToReceiver()")
-        sendTerminalFileToReceiver(
-            transfer,
-            receiver.id
-        );
-
-
-        return;
-
-    }
-
-
-    // ==================================================
-    // BROWSER SENDER
+    // FILE FROM BROWSER
     // ==================================================
 
     sendJSON(
@@ -1054,8 +1111,6 @@ console.log("Checking condition for sendTerminalFileToReceiver")
     );
 
 }
-
-
 // ======================================================
 // BROWSER REJECT
 // ======================================================
