@@ -2366,9 +2366,6 @@ Commands:
   y
   n
 
-  accept <transfer-id>
-  reject <transfer-id>
-
   help
   exit
 
@@ -2622,8 +2619,6 @@ send-text <text>
 y
 n
 
-accept <transfer-id>
-reject <transfer-id>
 
 exit
 
