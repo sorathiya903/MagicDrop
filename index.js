@@ -981,7 +981,7 @@ function acceptTransfer(
     // ==================================================
     // TERMINAL SENDER
     // ==================================================
-
+console.log("Checking condition for sendTerminalFileToReceiver")
     if (
         transfer.senderId ===
         "terminal"
