@@ -121,11 +121,13 @@ You don't need single or double quotes.
 
 Example:
 
+```
 md> send-text Hello this is a test
+```
 
 The receiver gets the text after accepting the transfer.
 
-📱 Browser Sharing
+## 📱 Browser Sharing
 
 From the browser you can:
 
@@ -146,7 +148,15 @@ Browser-to-browser file transfers are sent in **chunks** and combined into a sin
 
 Command	Description
 
-
+`md start` - Start MagicDrop
+`md -v` -	Show the installed version
+`devices` -	Show connected devices
+`send <file>` -	Send a file
+`send-text` - <text>	Send text
+`y`	- Accept the oldest pending transfer
+`n` -	Reject the oldest pending transfer
+`help` -	Show available commands
+`exit` -	Stop MagicDrop
 
 
 ## 🔢 Check Version
