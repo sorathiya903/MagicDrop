@@ -915,7 +915,7 @@ function acceptTransfer(
         console.log("");
 
         console.log(
-            `✅ ${receiver.name} accepted ${transfer.name}`
+            `✅ ${receiver.name} accepted`
         );
 
         // TEXT FROM TERMINAL
