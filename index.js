@@ -15,6 +15,9 @@ const readline = require("readline");
 // ======================================================
 
 const PORT = 8765;
+const DEFAULT_MAX_FILE_SIZE = 512 * 1024 * 1024; // 512 MB
+let MAX_FILE_SIZE = DEFAULT_MAX_FILE_SIZE;
+
 
 const devices =
     new Map();
@@ -94,7 +97,26 @@ function getVersion() {
 // ======================================================
 // HELPERS
 // ======================================================
+function parseFileSize(value) {
+    if (!value) return DEFAULT_MAX_FILE_SIZE;
 
+    const match = String(value).trim().match(/^(\d+(?:\.\d+)?)\s*(KB|MB|GB)$/i);
+
+    if (!match) {
+        throw new Error("Invalid size. Use values like 100MB, 512MB, 1GB.");
+    }
+
+    const number = Number(match[1]);
+    const unit = match[2].toUpperCase();
+
+    const multipliers = {
+        KB: 1024,
+        MB: 1024 * 1024,
+        GB: 1024 * 1024 * 1024
+    };
+
+    return Math.floor(number * multipliers[unit]);
+}
 function makeId(
     length = 10
 ) {
@@ -3181,15 +3203,34 @@ const command =
     process.argv[2];
 
 
-if (
-    command ===
-    "start"
-) {
+if (command.startsWith("start")) {
+    const parts = command.trim().split(/\s+/);
+
+    MAX_FILE_SIZE = DEFAULT_MAX_FILE_SIZE;
+
+    const limitIndex = parts.indexOf("--limit");
+
+    if (limitIndex !== -1) {
+        const limitValue = parts[limitIndex + 1];
+
+        if (!limitValue) {
+            console.log("❌ Please specify a file size.");
+            console.log("Example: md start --limit 1GB");
+            return;
+        }
+
+        try {
+            MAX_FILE_SIZE = parseFileSize(limitValue);
+        } catch (error) {
+            console.log(`❌ ${error.message}`);
+            return;
+        }
+    }
+
+    console.log(`📦 Maximum file size: ${formatBytes(MAX_FILE_SIZE)}`);
 
     startServer();
-
 }
-
 else if (
     command === "-v" ||
     command === "--version"
