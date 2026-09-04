@@ -208,7 +208,7 @@ md -v
 Example:
 
 ```
-MagicDrop 0.0.1 by Aditya Sorathiya
+MagicDrop 0.0.2 by Aditya Sorathiya
 ```
 ## 🔐 Local Network
 
