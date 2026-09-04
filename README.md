@@ -150,6 +150,8 @@ Command	Description
 
 `md start` - Start MagicDrop
 
+`md start --limit <NUMBER><KB/MB/GB>` - Start MagicDrop with a custom file-size limit
+
 `md -v` -	Show the installed version
 
 `devices` -	Show connected devices
@@ -197,6 +199,18 @@ downloads/
 The folder is created automatically when MagicDrop starts.
 
 ## 🎉 Releases
+
+### MagicDrop 0.0.2 - The second release of MagicDrop.
+
+✨ Improvements
+
+- 🎨 Improved browser UI
+- 
+- 📦 Added configurable maximum file-size limit
+- 
+- ⚙️ Added --limit option to md start
+- 
+- 🛡️ Added server-side and client-side file-size validation
 
 ### MagicDrop 0.0.1 — First Release
 
