@@ -144,6 +144,34 @@ From the browser you can:
 
 Browser-to-browser file transfers are sent in **chunks** and combined into a single file when the transfer finishes.
 
+## 📦 File Size Limit
+MagicDrop allows files up to **512 MB by default**.
+You can change or set the maximum file size when starting MagicDrop.
+
+Example:
+```
+md start --limit 1G
+```
+
+Supported units:
+
+ 1. KB
+ 2. MB
+ 3. GB
+
+Examples:
+```
+md start --limit 100MB
+```
+```
+md start --limit 512MB
+```
+```
+md start --limit 1GB
+```
+
+The file-size limit is enforced by the MagicDrop server, while the browser also checks files before sending them.
+
 ## 💻 Terminal Commands
 
 Command	Description
