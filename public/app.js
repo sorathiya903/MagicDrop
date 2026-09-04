@@ -711,7 +711,27 @@ function sendFiles() {
                 .toString(36)
                 .substring(2, 10);
 
+ if (file.size > MAX_FILE_SIZE) {
 
+        addTransfer(`
+            ❌ <strong>${escapeHTML(file.name)}</strong>
+            is too large.
+            Maximum allowed size is
+            ${formatBytes(MAX_FILE_SIZE)}.
+        `);
+
+        return;
+    }
+
+    const localId =
+        Math.random()
+            .toString(36)
+            .substring(2, 10);
+
+    pendingFiles.set(
+        localId,
+        file
+    );
         pendingFiles.set(
             localId,
             file
