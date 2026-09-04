@@ -673,60 +673,50 @@ document
         sendFiles
     );
 
-
 function sendFiles() {
 
     const files =
         [...fileInput.files];
 
-
     if (!files.length) {
-
-        alert(
-            "Select a file first."
-        );
-
+        alert("Select a file first.");
         return;
     }
-
 
     const targets =
         getTargets();
 
-
     if (!targets.length) {
-
-        alert(
-            "Select a device first."
-        );
-
+        alert("Select a device first.");
         return;
     }
 
+    let sentCount = 0;
 
     files.forEach(file => {
- if (file.size > MAX_FILE_SIZE) {
 
-        addTransfer(`
-            ❌ <strong>${escapeHTML(file.name)}</strong>
-            is too large.
-            Maximum allowed size is
-            ${formatBytes(MAX_FILE_SIZE)}.
-        `);
+        // Check file size
+        if (file.size > MAX_FILE_SIZE) {
 
-        return;
-    }
+            addTransfer(`
+                ❌ <strong>${escapeHTML(file.name)}</strong>
+                is too large.
+                Maximum allowed size is
+                ${formatBytes(MAX_FILE_SIZE)}.
+            `);
 
-    const localId =
-        Math.random()
-            .toString(36)
-            .substring(2, 10);
+            return;
+        }
 
-    pendingFiles.set(
-        localId,
-        file
-    );
+        const localId =
+            Math.random()
+                .toString(36)
+                .substring(2, 10);
 
+        pendingFiles.set(
+            localId,
+            file
+        );
 
         socket.send(
             JSON.stringify({
@@ -757,13 +747,18 @@ function sendFiles() {
             })
         );
 
+        sentCount++;
+
     });
 
+    // Only show approval message if files were actually sent
+    if (sentCount > 0) {
 
-    addTransfer(
-        `📤 ${files.length} file(s) sent for approval`
-    );
+        addTransfer(
+            `📤 ${sentCount} file(s) sent for approval`
+        );
 
+    }
 
     fileInput.value = "";
 }
