@@ -233,11 +233,11 @@ The folder is created automatically when MagicDrop starts.
 ✨ Improvements
 
 - 🎨 Improved browser UI
-- 
+  
 - 📦 Added configurable maximum file-size limit
-- 
+  
 - ⚙️ Added --limit option to md start
-- 
+ 
 - 🛡️ Added server-side and client-side file-size validation
 
 ### MagicDrop 0.0.1 — First Release
