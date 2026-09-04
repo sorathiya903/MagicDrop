@@ -31,7 +31,7 @@ MagicDrop starts a local server and displays a QR code.
 
 Example:
 ```
-✨ MagicDrop 0.0.1
+✨ MagicDrop 0.0.2
 by Aditya Sorathiya
 
 🌐 http://-.-.-.-:8765
