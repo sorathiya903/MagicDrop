@@ -196,7 +196,7 @@ downloads/
 
 The folder is created automatically when MagicDrop starts.
 
-## 🎉 Release 0.0.1
+## 🎉 Releases
 
 ### MagicDrop 0.0.1 — First Release
 
