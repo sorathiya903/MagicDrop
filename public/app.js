@@ -705,12 +705,6 @@ function sendFiles() {
 
 
     files.forEach(file => {
-
-        const localId =
-            Math.random()
-                .toString(36)
-                .substring(2, 10);
-
  if (file.size > MAX_FILE_SIZE) {
 
         addTransfer(`
