@@ -726,10 +726,6 @@ function sendFiles() {
         localId,
         file
     );
-        pendingFiles.set(
-            localId,
-            file
-        );
 
 
         socket.send(
