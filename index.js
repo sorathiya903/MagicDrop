@@ -3184,7 +3184,23 @@ function handleTransferRequest(
         return;
 
     }
+if (
+    data.kind !== "text" &&
+    Number(data.size) > MAX_FILE_SIZE
+) {
 
+    sendJSON(
+        ws,
+        {
+            type: "error",
+            message:
+                `File is too large. Maximum allowed size is ${formatBytes(MAX_FILE_SIZE)}.`
+        }
+    );
+
+    return;
+
+}
 
     const transfer =
         createTransfer(
