@@ -3212,39 +3212,56 @@ function handleTransferRequest(
 // ======================================================
 // ENTRY POINT
 // ======================================================
+const args = process.argv.slice(2);
 
-const command =
-    process.argv[2];
+const command = args[0];
 
-
-if (command.startsWith("start")) {
-    const parts = command.trim().split(/\s+/);
+if (command === "start") {
 
     MAX_FILE_SIZE = DEFAULT_MAX_FILE_SIZE;
 
-    const limitIndex = parts.indexOf("--limit");
+    const limitIndex = args.indexOf("--limit");
 
     if (limitIndex !== -1) {
-        const limitValue = parts[limitIndex + 1];
+
+        const limitValue = args[limitIndex + 1];
 
         if (!limitValue) {
+
             console.log("❌ Please specify a file size.");
             console.log("Example: md start --limit 1GB");
-            return;
+
+            process.exit(1);
+
         }
 
         try {
-            MAX_FILE_SIZE = parseFileSize(limitValue);
-        } catch (error) {
-            console.log(`❌ ${error.message}`);
-            return;
+
+            MAX_FILE_SIZE =
+                parseFileSize(limitValue);
+
         }
+
+        catch (error) {
+
+            console.log(
+                `❌ ${error.message}`
+            );
+
+            process.exit(1);
+
+        }
+
     }
 
-    console.log(`📦 Maximum file size: ${formatBytes(MAX_FILE_SIZE)}`);
+    console.log(
+        `📦 Maximum file size: ${formatBytes(MAX_FILE_SIZE)}`
+    );
 
     startServer();
+
 }
+
 else if (
     command === "-v" ||
     command === "--version"
@@ -3264,8 +3281,9 @@ else {
 Usage:
 
   md start
+  md start --limit 1GB
   md -v
 
 `);
 
-        }
+}
