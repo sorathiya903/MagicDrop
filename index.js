@@ -2287,6 +2287,19 @@ function sendTerminalFile(
         return;
 
     }
+    if (stat.size > MAX_FILE_SIZE) {
+
+    console.log(
+        `❌ File is too large. Maximum allowed size is ${formatBytes(MAX_FILE_SIZE)}.`
+    );
+
+    console.log(
+        `📦 File size: ${formatBytes(stat.size)}`
+    );
+
+    return;
+
+}
 
 
     if (
