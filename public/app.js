@@ -20,7 +20,9 @@ const textInput = document.getElementById("text");
 const fileInput = document.getElementById("fileInput");
 const transfers = document.getElementById("transfers");
 
+const DEFAULT_MAX_FILE_SIZE = 512 * 1024 * 1024; // 512 MB
 
+let MAX_FILE_SIZE = DEFAULT_MAX_FILE_SIZE;
 // ======================================================
 // JOIN
 // ======================================================
@@ -120,6 +122,7 @@ if (event.data instanceof ArrayBuffer) {
 
         myId = data.id;
         myName = data.name;
+MAX_FILE_SIZE =  Number(data.maxFileSize) ||   DEFAULT_MAX_FILE_SIZE;
 
         joinScreen.hidden = true;
         appScreen.hidden = false;
