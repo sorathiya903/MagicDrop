@@ -97,6 +97,20 @@ function getVersion() {
 // ======================================================
 // HELPERS
 // ======================================================
+function formatBytes(bytes) {
+    if (bytes < 1024) return `${bytes} B`;
+
+    const units = ["KB", "MB", "GB", "TB"];
+    let size = bytes;
+    let unitIndex = -1;
+
+    do {
+        size /= 1024;
+        unitIndex++;
+    } while (size >= 1024 && unitIndex < units.length - 1);
+
+    return `${size.toFixed(size >= 10 ? 0 : 1)} ${units[unitIndex]}`;
+}
 function parseFileSize(value) {
     if (!value) return DEFAULT_MAX_FILE_SIZE;
 
