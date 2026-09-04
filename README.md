@@ -150,7 +150,7 @@ You can change or set the maximum file size when starting MagicDrop.
 
 Example:
 ```
-md start --limit 1G
+md start --limit 1GB
 ```
 
 Supported units:
