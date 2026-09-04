@@ -2863,7 +2863,8 @@ function startServer() {
                                 id,
 
                                 name:
-                                    device.name
+                                    device.name,
+                                maxFileSize: MAX_FILE_SIZE
 
                             }
                         );
